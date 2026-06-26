@@ -1,5 +1,5 @@
 {
-  "name": "temp-vite",
+  "name": "urania",
   "private": true,
   "version": "0.0.0",
   "type": "module",
@@ -7,19 +7,28 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run"
+
   },
   "dependencies": {
+    "jszip": "^3.10.1",
+    "konva": "^10.3.0",
+    "lucide-react": "^1.21.0",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-konva": "^19.2.5",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@types/jszip": "^3.4.0",
     "@types/node": "^24.13.2",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
     "oxlint": "^1.69.0",
     "typescript": "~6.0.2",
-    "vite": "^8.1.0"
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9"
   }
 }
