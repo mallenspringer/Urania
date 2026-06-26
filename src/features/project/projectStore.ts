@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Project } from "../../shared/types/project";
+import type { Command } from "../../shared/types/command";
 
 /**
  * Creates a clean default Volvelle project structure.
@@ -46,13 +47,21 @@ export function createEmptyProject(): Project {
 
 interface ProjectState {
   project: Project;
+  past: Command[];
+  future: Command[];
   setProject: (project: Project) => void;
   updateMetadata: (metadata: Partial<Project["metadata"]>) => void;
   updateSettings: (settings: Partial<Project["settings"]>) => void;
+  executeCommand: (command: Command) => void;
+  undo: () => void;
+  redo: () => void;
+  clearHistory: () => void;
 }
 
 export const useProjectStore = create<ProjectState>((set) => ({
   project: createEmptyProject(),
+  past: [],
+  future: [],
   setProject: (project) => set({ project }),
   updateMetadata: (metadata) =>
     set((state) => ({
@@ -75,4 +84,42 @@ export const useProjectStore = create<ProjectState>((set) => ({
         },
       },
     })),
+  executeCommand: (command) => {
+    command.execute();
+    set((state) => {
+      const newPast = [...state.past, command];
+      if (newPast.length > 100) {
+        newPast.shift();
+      }
+      return {
+        past: newPast,
+        future: [],
+      };
+    });
+  },
+  undo: () => {
+    set((state) => {
+      if (state.past.length === 0) return {};
+      const newPast = [...state.past];
+      const command = newPast.pop()!;
+      command.undo();
+      return {
+        past: newPast,
+        future: [command, ...state.future],
+      };
+    });
+  },
+  redo: () => {
+    set((state) => {
+      if (state.future.length === 0) return {};
+      const newFuture = [...state.future];
+      const command = newFuture.shift()!;
+      command.execute();
+      return {
+        past: [...state.past, command],
+        future: newFuture,
+      };
+    });
+  },
+  clearHistory: () => set({ past: [], future: [] }),
 }));
