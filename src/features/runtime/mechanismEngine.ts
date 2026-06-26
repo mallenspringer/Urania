@@ -138,6 +138,8 @@ function resolveNode(
       renderData.startAngle = s.startAngle;
       renderData.endAngle = s.endAngle;
       if (ringContext) {
+        renderData.innerRadius = ringContext.innerRadius;
+        renderData.outerRadius = ringContext.outerRadius;
         bounds = {
           x: -ringContext.outerRadius,
           y: -ringContext.outerRadius,
