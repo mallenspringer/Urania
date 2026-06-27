@@ -83,6 +83,21 @@ export class Matrix2D {
     );
   }
 
+  invert(): Matrix2D {
+    const det = this.a * this.d - this.b * this.c;
+    if (Math.abs(det) < 1e-10) {
+      throw new Error("Matrix is singular and cannot be inverted");
+    }
+    return new Matrix2D(
+      this.d / det,
+      -this.b / det,
+      -this.c / det,
+      this.a / det,
+      (this.c * this.ty - this.d * this.tx) / det,
+      (this.b * this.tx - this.a * this.ty) / det
+    );
+  }
+
   transformPoint(x: number, y: number): { x: number; y: number } {
     return {
       x: x * this.a + y * this.c + this.tx,

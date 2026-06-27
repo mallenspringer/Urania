@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import {
   Undo2,
   Redo2,
@@ -11,12 +11,8 @@ import {
   FileCode,
 } from "lucide-react";
 import { useProjectStore } from "./features/project/projectStore";
-import {
-  CreateRingCommand,
-  DeleteRingCommand,
-  RotateRingCommand,
-} from "./features/project/commands";
-import { CanvasWorkspace } from "./shared/ui/CanvasWorkspace";
+import { useSelectionStore } from "./features/selection/selectionStore";
+import { resolveProject } from "./features/runtime/mechanismEngine";
 import type {
   Project,
   RingNode,
@@ -25,6 +21,12 @@ import type {
   ArcTextNode,
   CircleNode,
 } from "./shared/types/project";
+import {
+  CreateRingCommand,
+  DeleteRingCommand,
+  RotateRingCommand,
+} from "./features/project/commands";
+import { CanvasWorkspace } from "./shared/ui/CanvasWorkspace";
 import "./App.css";
 
 const DEMO_VOLVELLE: Project = {
@@ -254,6 +256,15 @@ const DEMO_VOLVELLE: Project = {
 export default function App() {
   const { project, past, future, setProject, executeCommand, undo, redo } =
     useProjectStore();
+  const {
+    selectedItems,
+    activeItem,
+    selectItem,
+    activeRingId,
+    setActiveRingId,
+  } = useSelectionStore();
+
+  const resolvedNodes = useMemo(() => resolveProject(project), [project]);
 
   const startAnglesRef = useRef<Record<string, number>>({});
 
@@ -263,6 +274,7 @@ export default function App() {
     if (children.length === 0) {
       setProject(JSON.parse(JSON.stringify(DEMO_VOLVELLE)));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const rings = (project.mechanism.children || []).filter(
@@ -444,6 +456,30 @@ export default function App() {
               <Sliders size={14} />
               Concentric Ring Controls
             </h3>
+
+            {/* Selection Breadcrumb info bar */}
+            {selectedItems.length > 0 && (
+              <div className="selection-info-bar">
+                <span className="info-bar-title">Selected ({selectedItems.length}):</span>
+                <div className="selected-tags">
+                  {selectedItems.map((item) => {
+                    const name =
+                      resolvedNodes.find((n) => n.id === item.id)?.name ||
+                      item.id.substring(0, 4);
+                    const isActive = activeItem?.id === item.id;
+                    return (
+                      <span
+                        key={item.id}
+                        className={`selection-tag ${isActive ? "active-tag" : ""}`}
+                        onClick={() => selectItem(item.id, item.type, false)}
+                      >
+                        {name}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             <div className="rings-list">
               {rings.length === 0 ? (
                 <div className="empty-state">
@@ -454,8 +490,32 @@ export default function App() {
                   </button>
                 </div>
               ) : (
-                rings.map((ring, idx) => (
-                  <div key={ring.id} className="ring-control-card">
+                rings.map((ring, idx) => {
+                  const isSelected = selectedItems.some((item) => item.id === ring.id);
+                  const isFocused = activeRingId === ring.id;
+                  return (
+                    <div
+                      key={ring.id}
+                      className={`ring-control-card ${isSelected ? "selected" : ""} ${
+                        isFocused ? "focused-ring" : ""
+                      }`}
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (
+                          target.tagName !== "INPUT" &&
+                          target.tagName !== "TEXTAREA" &&
+                          target.tagName !== "BUTTON" &&
+                          !target.closest("button")
+                        ) {
+                          selectItem(
+                            ring.id,
+                            "ring",
+                            e.shiftKey || e.ctrlKey || e.metaKey
+                          );
+                          setActiveRingId(ring.id);
+                        }
+                      }}
+                    >
                     <div className="card-header">
                       <span className="ring-index">#{rings.length - idx}</span>
                       <input
@@ -546,8 +606,9 @@ export default function App() {
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>

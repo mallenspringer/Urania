@@ -713,7 +713,7 @@ Avoid generic ID-only selection systems.
 Users should generally be able to select visible entities directly.
 
 ---
-
+1) 
 ## Directive 4
 
 Locked objects must be excluded from hit testing.

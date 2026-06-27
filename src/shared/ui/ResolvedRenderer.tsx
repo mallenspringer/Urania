@@ -19,7 +19,32 @@ interface MaskedGroupProps {
   children: React.ReactNode;
 }
 
+function findRingForNode(project: any, nodeId: string): string | null {
+  const rings = (project.mechanism.children || []).filter(
+    (c: any) => c.type === "ring"
+  );
+  for (const ring of rings) {
+    if (ring.id === nodeId) return ring.id;
+
+    const hasChild = (node: any): boolean => {
+      if (node.id === nodeId) return true;
+      if (node.children) {
+        for (const child of node.children) {
+          if (hasChild(child)) return true;
+        }
+      }
+      return false;
+    };
+    if (hasChild(ring)) {
+      return ring.id;
+    }
+  }
+  return null;
+}
+
 const MaskedGroup: React.FC<MaskedGroupProps> = ({ maskIds, allNodes, children }) => {
+  const project = useProjectStore((state) => state.project);
+
   if (maskIds.length === 0) {
     return <>{children}</>;
   }
@@ -29,6 +54,19 @@ const MaskedGroup: React.FC<MaskedGroupProps> = ({ maskIds, allNodes, children }
 
   if (!maskNode || maskNode.type !== "window") {
     // If mask node is not found or is invalid, skip it
+    return (
+      <MaskedGroup maskIds={remainingMaskIds} allNodes={allNodes}>
+        {children}
+      </MaskedGroup>
+    );
+  }
+
+  // Find the parent masking ring to check visibility
+  const maskRingId = findRingForNode(project, firstMaskId);
+  const maskRing = maskRingId ? allNodes.find((n) => n.id === maskRingId) : null;
+
+  // If the masking dial covers are hidden or not found, skip clipping
+  if (!maskRing || !maskRing.visible) {
     return (
       <MaskedGroup maskIds={remainingMaskIds} allNodes={allNodes}>
         {children}
@@ -47,16 +85,35 @@ const MaskedGroup: React.FC<MaskedGroupProps> = ({ maskIds, allNodes, children }
     );
   }
 
-  const clipFunc = (ctx: CanvasRenderingContext2D) => {
+  const clipFunc = (ctx: any) => {
     ctx.save();
-    // Transform ctx to match window's absolute world position
+
+    // 1. Draw a very large concentric circle representing the visible universe
+    ctx.beginPath();
+    ctx.moveTo(10000, 0);
+    ctx.arc(0, 0, 10000, 0, Math.PI * 2, false);
+
+    // 2. Draw the masking ring outer circle counter-clockwise (subtracting it)
+    const outerRadius = maskRing.renderData.outerRadius || 100;
+    ctx.moveTo(outerRadius, 0);
+    ctx.arc(0, 0, outerRadius, 0, Math.PI * 2, true);
+
+    // 3. Draw the masking ring inner circle clockwise (adding it back)
+    const innerRadius = maskRing.renderData.innerRadius || 0;
+    if (innerRadius > 0) {
+      ctx.moveTo(innerRadius, 0);
+      ctx.arc(0, 0, innerRadius, 0, Math.PI * 2, false);
+    }
+
+    // 4. Draw the window cutout shape clockwise (adding it back inside the masking cover region)
+    ctx.save();
     ctx.translate(windowTransform.x, windowTransform.y);
     ctx.rotate((windowTransform.rotation * Math.PI) / 180);
     ctx.scale(windowTransform.scaleX, windowTransform.scaleY);
 
-    ctx.beginPath();
     if (shape.type === "circle") {
-      ctx.arc(0, 0, shape.radius, 0, Math.PI * 2);
+      ctx.moveTo(shape.radius, 0);
+      ctx.arc(0, 0, shape.radius, 0, Math.PI * 2, false);
     } else if (shape.type === "rectangle") {
       ctx.rect(-shape.width / 2, -shape.height / 2, shape.width, shape.height);
     } else if (shape.type === "polygon") {
@@ -69,6 +126,8 @@ const MaskedGroup: React.FC<MaskedGroupProps> = ({ maskIds, allNodes, children }
       }
       ctx.closePath();
     }
+    ctx.restore();
+
     ctx.restore();
   };
 
@@ -155,7 +214,7 @@ const ArcTextRenderer: React.FC<{ node: ResolvedNode }> = ({ node }) => {
 
   return (
     <Group>
-      {chars.map((char, i) => {
+      {chars.map((char: string, i: number) => {
         const charAngle =
           n > 1 ? startAngle + i * (actualSweep / (n - 1)) : startAngle;
 
@@ -368,6 +427,7 @@ export const ResolvedRenderer: React.FC<ResolvedRendererProps> = ({ nodes }) => 
       {nodes.map((node) => (
         <MaskedGroup key={node.id} maskIds={node.maskIds} allNodes={nodes}>
           <Group
+            id={node.id}
             x={node.worldTransform.x}
             y={node.worldTransform.y}
             rotation={node.worldTransform.rotation}

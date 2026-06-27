@@ -431,3 +431,66 @@
 .sidebar-section.fill-section::-webkit-scrollbar-thumb:hover {
   background: #2d3045;
 }
+
+/* Selection UI Styles */
+
+.selection-info-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background-color: #181922;
+  border: 1px solid #232530;
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 12px;
+}
+
+.info-bar-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.selected-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.selection-tag {
+  background-color: #0b0c0f;
+  border: 1px solid #232530;
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.selection-tag:hover {
+  background-color: #1e2030;
+  color: #f1f5f9;
+  border-color: #6366f1;
+}
+
+.selection-tag.active-tag {
+  background-color: #6366f1;
+  color: #ffffff;
+  border-color: #818cf8;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.35);
+}
+
+.ring-control-card.selected {
+  border-color: #6366f1 !important;
+  box-shadow: inset 0 0 0 1px rgba(99, 102, 241, 0.15);
+}
+
+.ring-control-card.focused-ring {
+  background-color: #1c1d27;
+  border-left: 3px solid #c084fc !important;
+}

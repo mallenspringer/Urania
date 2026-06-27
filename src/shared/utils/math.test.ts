@@ -6,6 +6,7 @@ import {
   cartesianToPolar,
   polarToCartesian,
 } from "./math";
+import { Matrix2D } from "./matrix";
 
 describe("Math Utilities", () => {
   describe("normalizeAngle", () => {
@@ -94,6 +95,25 @@ describe("Math Utilities", () => {
         expect(backCartesian.x).toBeCloseTo(randX, 5);
         expect(backCartesian.y).toBeCloseTo(randY, 5);
       }
+    });
+  });
+
+  describe("Matrix2D", () => {
+    it("should invert translation and rotation matrices correctly", () => {
+      const m = Matrix2D.identity().translate(10, 20).rotate(45).scale(2, 2);
+      const inv = m.invert();
+
+      const pt = { x: 5, y: 5 };
+      const transformed = m.transformPoint(pt.x, pt.y);
+      const untransformed = inv.transformPoint(transformed.x, transformed.y);
+
+      expect(untransformed.x).toBeCloseTo(pt.x, 5);
+      expect(untransformed.y).toBeCloseTo(pt.y, 5);
+    });
+
+    it("should throw on singular matrices", () => {
+      const singular = new Matrix2D(0, 0, 0, 0, 0, 0);
+      expect(() => singular.invert()).toThrow();
     });
   });
 });
