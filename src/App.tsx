@@ -33,6 +33,7 @@ import {
 } from "./features/project/commands";
 import { CanvasWorkspace } from "./shared/ui/CanvasWorkspace";
 import { InspectorPanel } from "./shared/ui/InspectorPanel";
+import { ExportModal } from "./shared/ui/ExportModal";
 import "./App.css";
 
 const DEMO_VOLVELLE: Project = {
@@ -275,6 +276,7 @@ export default function App() {
   const { zoom, setPan } = useViewStore();
   const { issues, autoRepairDuplicates } = useValidationStore();
   const [activeSidebarTab, setActiveSidebarTab] = useState<"rings" | "validation">("rings");
+  const [showExportModal, setShowExportModal] = useState(false);
 
   const handleInspectIssue = (entityId?: string, entityType?: string) => {
     if (!entityId) return;
@@ -432,6 +434,11 @@ export default function App() {
           <button onClick={handleLoadDemo} className="btn btn-secondary">
             <RotateCw size={14} />
             Reset Demo
+          </button>
+
+          <button onClick={() => setShowExportModal(true)} className="btn btn-secondary">
+            <FileCode size={14} />
+            Export Project
           </button>
 
           <button onClick={handleAddRing} className="btn btn-primary">
@@ -737,6 +744,13 @@ export default function App() {
         {/* Right Properties Inspector Panel */}
         <InspectorPanel />
       </main>
+
+      {showExportModal && (
+        <ExportModal
+          project={project}
+          onClose={() => setShowExportModal(false)}
+        />
+      )}
     </div>
   );
 }

@@ -35,6 +35,7 @@ export interface ResolvedNode {
   bounds: Bounds;
   maskIds: string[];
   renderData: Record<string, any>;
+  ringId?: string;
 }
 
 /**
@@ -81,7 +82,7 @@ function resolveNode(
   parentVisible: boolean,
   currentMaskIds: string[],
   resolved: ResolvedNode[],
-  ringContext: { innerRadius: number; outerRadius: number } | null
+  ringContext: { id: string; innerRadius: number; outerRadius: number } | null
 ): void {
   let localMatrix = Matrix2D.identity();
 
@@ -96,7 +97,7 @@ function resolveNode(
   if (node.type === "ring") {
     const ring = node as RingNode;
     localMatrix = localMatrix.rotate(ring.rotation);
-    ringContext = { innerRadius: ring.innerRadius, outerRadius: ring.outerRadius };
+    ringContext = { id: ring.id, innerRadius: ring.innerRadius, outerRadius: ring.outerRadius };
   }
 
   // Sector start angle rotation
@@ -296,6 +297,7 @@ function resolveNode(
     bounds,
     maskIds: [...currentMaskIds],
     renderData,
+    ringId: ringContext ? ringContext.id : undefined,
   });
 
   // Resolve descendants
