@@ -12,6 +12,7 @@ import {
 } from "react-konva";
 import type { ResolvedNode } from "../../features/runtime/mechanismEngine";
 import { useProjectStore } from "../../features/project/projectStore";
+import { useToolStore } from "../../features/tools/toolStore";
 
 interface MaskedGroupProps {
   maskIds: string[];
@@ -138,6 +139,79 @@ const MaskedGroup: React.FC<MaskedGroupProps> = ({ maskIds, allNodes, children }
       </MaskedGroup>
     </Group>
   );
+};
+
+const SelfMaskedGroup: React.FC<{
+  node: ResolvedNode;
+  allNodes: ResolvedNode[];
+  children: React.ReactNode;
+}> = ({ node, allNodes, children }) => {
+  const project = useProjectStore((state) => state.project);
+
+  if (node.type === "window") {
+    return <>{children}</>;
+  }
+
+  const nodeRingId = findRingForNode(project, node.id);
+  if (!nodeRingId) {
+    return <>{children}</>;
+  }
+
+  const selfWindows = allNodes.filter(
+    (n) => n.type === "window" && findRingForNode(project, n.id) === nodeRingId
+  );
+
+  if (selfWindows.length === 0) {
+    return <>{children}</>;
+  }
+
+  const clipFunc = (ctx: any) => {
+    ctx.save();
+
+    // 1. Draw a very large concentric circle representing the visible universe (clockwise)
+    ctx.beginPath();
+    ctx.moveTo(10000, 0);
+    ctx.arc(0, 0, 10000, 0, Math.PI * 2, false);
+
+    // 2. Draw each window cutout shape counter-clockwise (subtracting it)
+    for (const win of selfWindows) {
+      const windowTransform = win.worldTransform;
+      const shape = win.renderData.shape;
+      if (!shape) continue;
+
+      ctx.save();
+      ctx.translate(windowTransform.x, windowTransform.y);
+      ctx.rotate((windowTransform.rotation * Math.PI) / 180);
+      ctx.scale(windowTransform.scaleX, windowTransform.scaleY);
+
+      if (shape.type === "circle") {
+        ctx.moveTo(shape.radius, 0);
+        ctx.arc(0, 0, shape.radius, 0, Math.PI * 2, true); // true = counter-clockwise
+      } else if (shape.type === "rectangle") {
+        const w = shape.width / 2;
+        const h = shape.height / 2;
+        ctx.moveTo(-w, -h);
+        ctx.lineTo(-w, h);
+        ctx.lineTo(w, h);
+        ctx.lineTo(w, -h);
+        ctx.closePath();
+      } else if (shape.type === "polygon") {
+        const sides = shape.sides || 3;
+        const radius = shape.radius || 10;
+        ctx.moveTo(radius, 0);
+        for (let i = sides - 1; i >= 0; i--) {
+          const angle = (i * 2 * Math.PI) / sides;
+          ctx.lineTo(radius * Math.cos(angle), radius * Math.sin(angle));
+        }
+        ctx.closePath();
+      }
+      ctx.restore();
+    }
+
+    ctx.restore();
+  };
+
+  return <Group clipFunc={clipFunc}>{children}</Group>;
 };
 
 const KonvaImageRenderer: React.FC<{ node: ResolvedNode; assets: any[] }> = ({
@@ -365,7 +439,9 @@ const renderSpecificNode = (node: ResolvedNode, assets: any[]) => {
         />
       );
 
-    case "text":
+    case "text": {
+      const editingTextNodeId = useToolStore.getState().editingTextNodeId;
+      const isEditing = editingTextNodeId === node.id;
       return (
         <Text
           text={content || ""}
@@ -374,8 +450,10 @@ const renderSpecificNode = (node: ResolvedNode, assets: any[]) => {
           fill={style?.fill || "#f1f5f9"}
           x={0}
           y={-(fontSize || 14)}
+          visible={!isEditing}
         />
       );
+    }
 
     case "arcText":
       return <ArcTextRenderer node={node} />;
@@ -426,17 +504,19 @@ export const ResolvedRenderer: React.FC<ResolvedRendererProps> = ({ nodes }) => 
       {/* Render each node nested inside its resolved mask list */}
       {nodes.map((node) => (
         <MaskedGroup key={node.id} maskIds={node.maskIds} allNodes={nodes}>
-          <Group
-            id={node.id}
-            x={node.worldTransform.x}
-            y={node.worldTransform.y}
-            rotation={node.worldTransform.rotation}
-            scaleX={node.worldTransform.scaleX}
-            scaleY={node.worldTransform.scaleY}
-            visible={node.visible}
-          >
-            {renderSpecificNode(node, assets)}
-          </Group>
+          <SelfMaskedGroup node={node} allNodes={nodes}>
+            <Group
+              id={node.id}
+              x={node.worldTransform.x}
+              y={node.worldTransform.y}
+              rotation={node.worldTransform.rotation}
+              scaleX={node.worldTransform.scaleX}
+              scaleY={node.worldTransform.scaleY}
+              visible={node.visible}
+            >
+              {renderSpecificNode(node, assets)}
+            </Group>
+          </SelfMaskedGroup>
         </MaskedGroup>
       ))}
     </Group>

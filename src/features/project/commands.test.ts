@@ -4,6 +4,7 @@ import {
   CreateRingCommand,
   DeleteRingCommand,
   RotateRingCommand,
+  UpdateNodeCommand,
 } from "./commands";
 import type { RingNode } from "../../shared/types/project";
 import type { Command } from "../../shared/types/command";
@@ -119,6 +120,66 @@ describe("Command and Undo History System", () => {
       useProjectStore.getState().redo();
       children = useProjectStore.getState().project.mechanism.children || [];
       expect((children[0] as RingNode).rotation).toBe(45);
+    });
+  });
+
+  describe("UpdateNodeCommand", () => {
+    it("should update properties of a nested node on execute and revert on undo", () => {
+      const ring = createDummyRing("ring-1");
+      const textNode = {
+        id: "text-1",
+        type: "text",
+        name: "My Text",
+        visible: true,
+        locked: false,
+        transform: { x: 5, y: 5, rotation: 0, scaleX: 1, scaleY: 1 },
+        content: "Before",
+        style: { fill: "#000" },
+        export: { artwork: true, cut: false, fold: false },
+      };
+      ring.children = [textNode as any];
+
+      useProjectStore.getState().setProject({
+        ...useProjectStore.getState().project,
+        mechanism: {
+          ...useProjectStore.getState().project.mechanism,
+          children: [ring],
+        },
+      });
+
+      const updatedTextNode = {
+        ...textNode,
+        content: "After",
+        transform: { x: 10, y: 15, rotation: 45, scaleX: 1, scaleY: 1 },
+      };
+
+      const cmd = new UpdateNodeCommand("text-1", textNode as any, updatedTextNode as any);
+      useProjectStore.getState().executeCommand(cmd);
+
+      // Verify execute
+      let children = useProjectStore.getState().project.mechanism.children || [];
+      let ringChildren = children[0].children || [];
+      expect((ringChildren[0] as any).content).toBe("After");
+      expect(ringChildren[0].transform.x).toBe(10);
+      expect(ringChildren[0].transform.y).toBe(15);
+      expect(ringChildren[0].transform.rotation).toBe(45);
+
+      // Verify undo
+      useProjectStore.getState().undo();
+      children = useProjectStore.getState().project.mechanism.children || [];
+      ringChildren = children[0].children || [];
+      expect((ringChildren[0] as any).content).toBe("Before");
+      expect(ringChildren[0].transform.x).toBe(5);
+      expect(ringChildren[0].transform.y).toBe(5);
+      expect(ringChildren[0].transform.rotation).toBe(0);
+
+      // Verify redo
+      useProjectStore.getState().redo();
+      children = useProjectStore.getState().project.mechanism.children || [];
+      ringChildren = children[0].children || [];
+      expect((ringChildren[0] as any).content).toBe("After");
+      expect(ringChildren[0].transform.x).toBe(10);
+      expect(ringChildren[0].transform.y).toBe(15);
     });
   });
 

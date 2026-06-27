@@ -8,6 +8,9 @@ import { ResolvedRenderer } from "./ResolvedRenderer";
 import { SelectionHighlights } from "./SelectionHighlights";
 import { useToolStore } from "../../features/tools/toolStore";
 import { toolRegistry } from "../../features/tools/toolRegistry";
+import { findHitNode } from "../../features/tools/selectTool";
+import { UpdateNodeCommand } from "../../features/project/commands";
+import { findNodeInTree } from "../../shared/utils/geometry";
 import {
   MousePointer,
   Square,
@@ -29,6 +32,10 @@ export const CanvasWorkspace: React.FC = () => {
   const [isPanning, setIsPanning] = useState(false);
   const dragStartRef = useRef({ x: 0, y: 0 });
   const [currentPointer, setCurrentPointer] = useState<{ x: number; y: number } | null>(null);
+  const [hoverState, setHoverState] = useState<{ handle: string | null; nodeId: string | null; nodeType: string | null } | null>(null);
+  const [localTextValue, setLocalTextValue] = useState("");
+  const originalTextRef = useRef("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { zoom, pan, setZoom, setPan, resetView } = useViewStore();
   const project = useProjectStore((state) => state.project);
@@ -47,6 +54,91 @@ export const CanvasWorkspace: React.FC = () => {
 
   const activeTool = toolRegistry.getTool(activeToolId);
   const resolvedNodes = useMemo(() => resolveProject(project), [project]);
+
+  const { editingTextNodeId, setEditingTextNodeId } = useToolStore();
+  const { setProject, executeCommand } = useProjectStore();
+
+  useEffect(() => {
+    if (editingTextNodeId) {
+      const node = findNodeInTree(project.mechanism, editingTextNodeId);
+      if (node) {
+        const val = node.content || "";
+        setLocalTextValue(val);
+        originalTextRef.current = val;
+        setTimeout(() => {
+          if (textareaRef.current) {
+            textareaRef.current.focus();
+            textareaRef.current.select();
+          }
+        }, 50);
+      }
+    } else {
+      setLocalTextValue("");
+      originalTextRef.current = "";
+    }
+  }, [editingTextNodeId]);
+
+  const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setLocalTextValue(val);
+
+    const updatedMechanism = JSON.parse(JSON.stringify(project.mechanism));
+    const node = findNodeInTree(updatedMechanism, editingTextNodeId!);
+    if (node) {
+      node.content = val;
+      setProject({
+        ...project,
+        mechanism: updatedMechanism,
+      });
+    }
+  };
+
+  const commitTextEdit = () => {
+    if (!editingTextNodeId) return;
+
+    const finalVal = localTextValue;
+    const origVal = originalTextRef.current;
+
+    // Rollback transient change so command can execute cleanly
+    const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
+    const node = findNodeInTree(rolledBackMechanism, editingTextNodeId);
+    if (node) {
+      node.content = origVal;
+      setProject({
+        ...project,
+        mechanism: rolledBackMechanism,
+      });
+    }
+
+    if (finalVal !== origVal) {
+      const originalNode = findNodeInTree(project.mechanism, editingTextNodeId);
+      const updatedNode = JSON.parse(JSON.stringify(originalNode));
+      updatedNode.content = finalVal;
+
+      executeCommand(new UpdateNodeCommand(editingTextNodeId, originalNode, updatedNode));
+    }
+
+    setEditingTextNodeId(null);
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      commitTextEdit();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
+      const node = findNodeInTree(rolledBackMechanism, editingTextNodeId!);
+      if (node) {
+        node.content = originalTextRef.current;
+        setProject({
+          ...project,
+          mechanism: rolledBackMechanism,
+        });
+      }
+      setEditingTextNodeId(null);
+    }
+  };
 
   // Track size of container
   useEffect(() => {
@@ -104,10 +196,32 @@ export const CanvasWorkspace: React.FC = () => {
         if (previewData) {
           setPreviewData(null);
           setDragStartPos(null);
+        } else if (editingTextNodeId) {
+          // Rollback transient changes
+          const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
+          const node = findNodeInTree(rolledBackMechanism, editingTextNodeId);
+          if (node) {
+            node.content = originalTextRef.current;
+            setProject({
+              ...project,
+              mechanism: rolledBackMechanism,
+            });
+          }
+          setEditingTextNodeId(null);
         } else {
           setActiveTool("select");
         }
         return;
+      }
+
+      if (e.key === "Enter") {
+        const selectStore = useSelectionStore.getState();
+        const activeItem = selectStore.activeItem;
+        if (activeItem && (activeItem.type === "text" || activeItem.type === "arcText" || activeItem.type === "sectorLabel")) {
+          e.preventDefault();
+          setEditingTextNodeId(activeItem.id);
+          return;
+        }
       }
 
       if (
@@ -204,6 +318,57 @@ export const CanvasWorkspace: React.FC = () => {
       return;
     }
 
+    // Dynamic hover calculation for Select Tool cursor style
+    if (activeToolId === "select" && !isPanning && !isSpacePressed && (!previewData || !previewData.isDragging)) {
+      const wx = (pointer.x - stageX) / zoom;
+      const wy = (pointer.y - stageY) / zoom;
+      
+      const selectStore = useSelectionStore.getState();
+      const activeItem = selectStore.activeItem;
+      let foundHover = null;
+
+      // Check active node handles first
+      if (activeItem) {
+        const activeNode = resolvedNodes.find((n) => n.id === activeItem.id);
+        if (activeNode && activeNode.type !== "ring" && activeNode.type !== "sector") {
+          const { x, y, rotation, scaleX, scaleY } = activeNode.worldTransform;
+          const { x: bx, y: by, width, height } = activeNode.bounds;
+          const rotRad = (rotation * Math.PI) / 180;
+          const cos = Math.cos(rotRad) * scaleX;
+          const sin = Math.sin(rotRad) * scaleY;
+
+          const corners = [
+            { name: "top-left", lx: bx, ly: by },
+            { name: "top-right", lx: bx + width, ly: by },
+            { name: "bottom-left", lx: bx, ly: by + height },
+            { name: "bottom-right", lx: bx + width, ly: by + height },
+          ];
+
+          for (const corner of corners) {
+            const hwx = x + (corner.lx * cos - corner.ly * sin);
+            const hwy = y + (corner.lx * sin + corner.ly * cos);
+            const dist = Math.hypot(wx - hwx, wy - hwy);
+            if (dist < 8 / zoom) {
+              foundHover = { handle: corner.name, nodeId: activeItem.id, nodeType: activeItem.type };
+              break;
+            }
+          }
+        }
+      }
+
+      if (!foundHover) {
+        // Check node body
+        const hit = findHitNode({ x: wx, y: wy }, resolvedNodes, createToolContext(pointer, null));
+        if (hit && hit.type !== "ring" && hit.type !== "sector") {
+          foundHover = { handle: null, nodeId: hit.id, nodeType: hit.type };
+        }
+      }
+
+      setHoverState(foundHover);
+    } else {
+      if (hoverState) setHoverState(null);
+    }
+
     const context = createToolContext(pointer, dragStartPos, e);
     if (activeTool?.onMouseMove) {
       activeTool.onMouseMove(e, context);
@@ -212,6 +377,7 @@ export const CanvasWorkspace: React.FC = () => {
 
   const handleMouseUp = (e: any) => {
     setIsPanning(false);
+    setHoverState(null);
 
     const stage = e.target.getStage();
     const pointer = stage?.getPointerPosition();
@@ -271,8 +437,24 @@ export const CanvasWorkspace: React.FC = () => {
     cursorStyle = "grabbing";
   } else if (isSpacePressed) {
     cursorStyle = "grab";
-  } else if (activeToolId === "select" && previewData?.isDragging) {
-    cursorStyle = "crosshair";
+  } else if (activeToolId === "select") {
+    if (previewData?.isDragging) {
+      cursorStyle = "crosshair";
+    } else if (previewData?.isDraggingNode) {
+      cursorStyle = "move";
+    } else if (previewData?.isResizing) {
+      const h = previewData.handle;
+      cursorStyle = (h === "top-left" || h === "bottom-right") ? "nwse-resize" : "nesw-resize";
+    } else if (hoverState) {
+      if (hoverState.handle) {
+        const h = hoverState.handle;
+        cursorStyle = (h === "top-left" || h === "bottom-right") ? "nwse-resize" : "nesw-resize";
+      } else if (hoverState.nodeType === "text" || hoverState.nodeType === "arcText" || hoverState.nodeType === "sectorLabel") {
+        cursorStyle = "text";
+      } else {
+        cursorStyle = "move";
+      }
+    }
   }
 
   const toolsList = [
@@ -443,6 +625,17 @@ export const CanvasWorkspace: React.FC = () => {
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
         onWheel={handleWheel}
+        onDblClick={(e) => {
+          const stage = e.target.getStage();
+          const pointer = stage?.getPointerPosition();
+          if (!pointer) return;
+          const wx = (pointer.x - stageX) / zoom;
+          const wy = (pointer.y - stageY) / zoom;
+          const hit = findHitNode({ x: wx, y: wy }, resolvedNodes, createToolContext(pointer, null));
+          if (hit && (hit.type === "text" || hit.type === "arcText" || hit.type === "sectorLabel")) {
+            setEditingTextNodeId(hit.id);
+          }
+        }}
       >
         <Layer>
           <ResolvedRenderer nodes={resolvedNodes} />
@@ -469,6 +662,97 @@ export const CanvasWorkspace: React.FC = () => {
           <SelectionHighlights nodes={resolvedNodes} />
         </Layer>
       </Stage>
+
+      {/* Inline Text Editing Overlay */}
+      {editingTextNodeId && (() => {
+        const editingNode = resolvedNodes.find((n) => n.id === editingTextNodeId);
+        if (!editingNode) return null;
+
+        const { x, y, rotation, scaleX, scaleY } = editingNode.worldTransform;
+        const rotRad = (rotation * Math.PI) / 180;
+        const cos = Math.cos(rotRad) * scaleX;
+        const sin = Math.sin(rotRad) * scaleY;
+
+        let wx = x;
+        let wy = y;
+
+        if (editingNode.type === "arcText") {
+          const centerAngle = (editingNode.renderData.startAngle || 0) + (editingNode.renderData.sweepAngle || 0) / 2;
+          const centerAngleRad = (centerAngle * Math.PI) / 180;
+          const radius = editingNode.renderData.radius || 100;
+          const lx = radius * Math.cos(centerAngleRad);
+          const ly = radius * Math.sin(centerAngleRad);
+          wx = x + (lx * cos - ly * sin);
+          wy = y + (lx * sin + ly * cos);
+        } else {
+          const bx = editingNode.bounds.x;
+          const by = editingNode.bounds.y;
+          wx = x + (bx * cos - by * sin);
+          wy = y + (bx * sin + by * cos);
+        }
+
+        const screenX = dimensions.width / 2 + pan.x + wx * zoom;
+        const screenY = dimensions.height / 2 + pan.y + wy * zoom;
+
+        const fontSize = editingNode.renderData.fontSize || 14;
+        const fontFamily = editingNode.renderData.fontFamily || "Outfit, Inter, sans-serif";
+        const color = editingNode.renderData.style?.fill || "#cbd5e1";
+
+        const isStandardText = editingNode.type === "text";
+        
+        const baseStyle: React.CSSProperties = {
+          position: "absolute",
+          left: `${screenX}px`,
+          top: `${screenY}px`,
+          fontFamily: fontFamily,
+          fontSize: `${fontSize * zoom}px`,
+          color: color,
+          outline: "none",
+          resize: "none",
+          margin: 0,
+          zIndex: 100,
+          lineHeight: 1,
+        };
+
+        const standardTextStyle: React.CSSProperties = {
+          ...baseStyle,
+          background: "transparent",
+          border: "none",
+          boxShadow: "none",
+          padding: 0,
+          width: `${Math.max(40, editingNode.bounds.width * zoom + 32)}px`,
+          height: `${Math.max(20, fontSize * zoom * 1.3)}px`,
+          overflow: "hidden",
+          transform: `rotate(${rotation}deg)`,
+          transformOrigin: "0 0",
+        };
+
+        const overlayStyle: React.CSSProperties = {
+          ...baseStyle,
+          background: "rgba(22, 23, 28, 0.95)",
+          backdropFilter: "blur(4px)",
+          border: "1px solid #6366f1",
+          borderRadius: "6px",
+          padding: "6px 10px",
+          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)",
+          width: `${Math.max(160, editingNode.bounds.width * zoom + 32)}px`,
+          height: `${Math.max(36, fontSize * zoom * 1.5 + 12)}px`,
+          transform: "translate(-50%, -50%)",
+        };
+
+        const style = isStandardText ? standardTextStyle : overlayStyle;
+
+        return (
+          <textarea
+            ref={textareaRef}
+            value={localTextValue}
+            onChange={handleTextChange}
+            onKeyDown={handleTextKeyDown}
+            onBlur={commitTextEdit}
+            style={style}
+          />
+        );
+      })()}
     </div>
   );
 };

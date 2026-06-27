@@ -27,6 +27,7 @@ import {
   RotateRingCommand,
 } from "./features/project/commands";
 import { CanvasWorkspace } from "./shared/ui/CanvasWorkspace";
+import { InspectorPanel } from "./shared/ui/InspectorPanel";
 import "./App.css";
 
 const DEMO_VOLVELLE: Project = {
@@ -638,6 +639,9 @@ export default function App() {
         <section className="viewport-container">
           <CanvasWorkspace />
         </section>
+
+        {/* Right Properties Inspector Panel */}
+        <InspectorPanel />
       </main>
     </div>
   );

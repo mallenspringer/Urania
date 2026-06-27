@@ -41,9 +41,7 @@ export const textTool: Tool = {
         const inv = m.invert();
         const localClick = inv.transformPoint(pointer.x, pointer.y);
 
-        const content = window.prompt("Enter text content:", "Label Text");
-        if (!content) return;
-
+        const content = "Text";
         const settings = useToolStore.getState().toolSettings;
 
         const newTextNode = {
@@ -63,12 +61,14 @@ export const textTool: Tool = {
           fontFamily: settings.fontFamily || "Outfit",
           fontSize: settings.fontSize || 14,
           style: {
-            fill: "#1e293b",
+            fill: "#cbd5e1",
           },
           export: { artwork: true, cut: false, fold: false },
         };
 
         context.executeCommand(new CreateNodeCommand(activeRing.id, newTextNode));
+
+        useToolStore.getState().setEditingTextNodeId(newTextNode.id);
 
         if (!useToolStore.getState().isToolLocked) {
           useToolStore.getState().setActiveTool("select");
@@ -105,9 +105,7 @@ export const arcTextTool: Tool = {
         const inv = m.invert();
         const localClick = inv.transformPoint(pointer.x, pointer.y);
 
-        const content = window.prompt("Enter arc text content:", "Concentric Text");
-        if (!content) return;
-
+        const content = "Arc Text";
         const radius = Math.sqrt(localClick.x * localClick.x + localClick.y * localClick.y);
         const { theta } = cartesianToPolar(localClick.x, localClick.y, 0, 0);
 
@@ -136,12 +134,14 @@ export const arcTextTool: Tool = {
           fontFamily: settings.fontFamily || "Outfit",
           fontSize: settings.fontSize || 14,
           style: {
-            fill: "#1e293b",
+            fill: "#cbd5e1",
           },
           export: { artwork: true, cut: false, fold: false },
         };
 
         context.executeCommand(new CreateNodeCommand(activeRing.id, newArcTextNode));
+
+        useToolStore.getState().setEditingTextNodeId(newArcTextNode.id);
 
         if (!useToolStore.getState().isToolLocked) {
           useToolStore.getState().setActiveTool("select");

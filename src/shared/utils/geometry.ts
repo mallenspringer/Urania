@@ -26,6 +26,18 @@ export function findRingForNode(project: Project, nodeId: string): string | null
   return null;
 }
 
+export function findParentNode(tree: any, childId: string): any | null {
+  if (tree.children) {
+    for (const child of tree.children) {
+      if (child.id === childId) return tree;
+      const found = findParentNode(child, childId);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
+
 export function findNodeInTree(node: any, id: string): any | null {
   if (node.id === id) return node;
   if (node.children) {

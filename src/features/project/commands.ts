@@ -267,3 +267,62 @@ export class DeleteNodeCommand implements Command {
     return "Delete Node";
   }
 }
+
+/**
+ * Command to update a node's properties (content, transform, dimensions).
+ */
+export class UpdateNodeCommand implements Command {
+  private nodeId: string;
+  private oldNode: BaseNode;
+  private newNode: BaseNode;
+
+  constructor(nodeId: string, oldNode: BaseNode, newNode: BaseNode) {
+    this.nodeId = nodeId;
+    this.oldNode = JSON.parse(JSON.stringify(oldNode));
+    this.newNode = JSON.parse(JSON.stringify(newNode));
+  }
+
+  private updateInTree(tree: BaseNode, updated: BaseNode): boolean {
+    if (tree.id === this.nodeId) {
+      const children = tree.children;
+      Object.assign(tree, updated);
+      if (children) {
+        tree.children = children;
+      }
+      return true;
+    }
+    if (tree.children) {
+      for (let i = 0; i < tree.children.length; i++) {
+        if (this.updateInTree(tree.children[i], updated)) return true;
+      }
+    }
+    return false;
+  }
+
+  execute(): void {
+    const store = useProjectStore.getState();
+    const mechanism = JSON.parse(JSON.stringify(store.project.mechanism)) as BaseNode;
+    if (this.updateInTree(mechanism, this.newNode)) {
+      store.setProject({
+        ...store.project,
+        mechanism: mechanism as any,
+      });
+    }
+  }
+
+  undo(): void {
+    const store = useProjectStore.getState();
+    const mechanism = JSON.parse(JSON.stringify(store.project.mechanism)) as BaseNode;
+    if (this.updateInTree(mechanism, this.oldNode)) {
+      store.setProject({
+        ...store.project,
+        mechanism: mechanism as any,
+      });
+    }
+  }
+
+  getLabel(): string {
+    return `Edit ${this.newNode.type}`;
+  }
+}
+

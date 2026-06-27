@@ -63,6 +63,50 @@ const SelectionOutline: React.FC<SelectionOutlineProps> = ({ node, isActive }) =
           dash={dash}
           listening={false}
         />
+        {isActive && (
+          <>
+            <Rect
+              x={bx - 6}
+              y={by - 6}
+              width={6}
+              height={6}
+              fill="#c084fc"
+              stroke="#ffffff"
+              strokeWidth={1}
+              listening={false}
+            />
+            <Rect
+              x={bx + width}
+              y={by - 6}
+              width={6}
+              height={6}
+              fill="#c084fc"
+              stroke="#ffffff"
+              strokeWidth={1}
+              listening={false}
+            />
+            <Rect
+              x={bx - 6}
+              y={by + height}
+              width={6}
+              height={6}
+              fill="#c084fc"
+              stroke="#ffffff"
+              strokeWidth={1}
+              listening={false}
+            />
+            <Rect
+              x={bx + width}
+              y={by + height}
+              width={6}
+              height={6}
+              fill="#c084fc"
+              stroke="#ffffff"
+              strokeWidth={1}
+              listening={false}
+            />
+          </>
+        )}
       </Group>
     );
   }
