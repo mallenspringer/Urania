@@ -1,4 +1,4 @@
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useRef, useMemo, useState } from "react";
 import {
   Undo2,
   Redo2,
@@ -9,9 +9,14 @@ import {
   Sliders,
   Layers,
   FileCode,
+  AlertTriangle,
+  XCircle,
 } from "lucide-react";
 import { useProjectStore } from "./features/project/projectStore";
 import { useSelectionStore } from "./features/selection/selectionStore";
+import { useViewStore } from "./features/project/viewStore";
+import { useValidationStore } from "./features/validation/validationStore";
+import { findRingForNode } from "./shared/utils/geometry";
 import { resolveProject } from "./features/runtime/mechanismEngine";
 import type {
   Project,
@@ -267,6 +272,30 @@ export default function App() {
 
   const resolvedNodes = useMemo(() => resolveProject(project), [project]);
 
+  const { zoom, setPan } = useViewStore();
+  const { issues, autoRepairDuplicates } = useValidationStore();
+  const [activeSidebarTab, setActiveSidebarTab] = useState<"rings" | "validation">("rings");
+
+  const handleInspectIssue = (entityId?: string, entityType?: string) => {
+    if (!entityId) return;
+
+    selectItem(entityId, entityType || "ring", false);
+    if (entityType === "ring") {
+      setActiveRingId(entityId);
+    } else {
+      const ringId = findRingForNode(project, entityId);
+      if (ringId) {
+        setActiveRingId(ringId);
+      }
+    }
+
+    const resolved = resolvedNodes.find((n) => n.id === entityId);
+    if (resolved && resolved.worldTransform) {
+      const { x: wx, y: wy } = resolved.worldTransform;
+      setPan({ x: -wx * zoom, y: -wy * zoom });
+    }
+  };
+
   const startAnglesRef = useRef<Record<string, number>>({});
 
   // Seed demo project if workspace is empty
@@ -451,167 +480,232 @@ export default function App() {
             </div>
           </div>
 
-          {/* Active Ring Controller list */}
+          {/* Tabbed Concentric Ring Controls & Validation Issues Panel */}
           <div className="sidebar-section fill-section">
-            <h3 className="section-title">
-              <Sliders size={14} />
-              Concentric Ring Controls
-            </h3>
+            <div className="sidebar-tabs">
+              <button
+                className={`tab-btn ${activeSidebarTab === "rings" ? "active" : ""}`}
+                onClick={() => setActiveSidebarTab("rings")}
+              >
+                <Sliders size={13} />
+                Rings
+              </button>
+              <button
+                className={`tab-btn ${activeSidebarTab === "validation" ? "active" : ""}`}
+                onClick={() => setActiveSidebarTab("validation")}
+              >
+                <AlertTriangle size={13} />
+                Issues
+                {issues.length > 0 && (
+                  <span className={`tab-badge ${issues.some(i => i.severity === "error") ? "has-errors" : "only-warnings"}`}>
+                    {issues.length}
+                  </span>
+                )}
+              </button>
+            </div>
 
-            {/* Selection Breadcrumb info bar */}
-            {selectedItems.length > 0 && (
-              <div className="selection-info-bar">
-                <span className="info-bar-title">Selected ({selectedItems.length}):</span>
-                <div className="selected-tags">
-                  {selectedItems.map((item) => {
-                    const name =
-                      resolvedNodes.find((n) => n.id === item.id)?.name ||
-                      item.id.substring(0, 4);
-                    const isActive = activeItem?.id === item.id;
-                    return (
-                      <span
-                        key={item.id}
-                        className={`selection-tag ${isActive ? "active-tag" : ""}`}
-                        onClick={() => selectItem(item.id, item.type, false)}
-                      >
-                        {name}
-                      </span>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-            <div className="rings-list">
-              {rings.length === 0 ? (
-                <div className="empty-state">
-                  <Layers size={24} />
-                  <p>No active rings found</p>
-                  <button onClick={handleAddRing} className="btn btn-sm btn-primary">
-                    Create One
-                  </button>
-                </div>
-              ) : (
-                rings.map((ring, idx) => {
-                  const isSelected = selectedItems.some((item) => item.id === ring.id);
-                  const isFocused = activeRingId === ring.id;
-                  return (
-                    <div
-                      key={ring.id}
-                      className={`ring-control-card ${isSelected ? "selected" : ""} ${
-                        isFocused ? "focused-ring" : ""
-                      }`}
-                      onClick={(e) => {
-                        const target = e.target as HTMLElement;
-                        if (
-                          target.tagName !== "INPUT" &&
-                          target.tagName !== "TEXTAREA" &&
-                          target.tagName !== "BUTTON" &&
-                          !target.closest("button")
-                        ) {
-                          selectItem(
-                            ring.id,
-                            "ring",
-                            e.shiftKey || e.ctrlKey || e.metaKey
-                          );
-                          setActiveRingId(ring.id);
-                        }
-                      }}
-                    >
-                    <div className="card-header">
-                      <span className="ring-index">#{rings.length - idx}</span>
-                      <input
-                        type="text"
-                        className="ring-name-input"
-                        value={ring.name || ""}
-                        onChange={(e) => {
-                          const name = e.target.value;
-                          setProject({
-                            ...project,
-                            mechanism: {
-                              ...project.mechanism,
-                              children: (project.mechanism.children || []).map((c) =>
-                                c.id === ring.id ? { ...c, name } : c
-                              ),
-                            },
-                          });
-                        }}
-                      />
-                      <button
-                        onClick={() => handleDeleteRing(ring)}
-                        className="delete-btn"
-                        title="Delete Ring"
-                      >
-                        <Trash2 size={13} />
+            {activeSidebarTab === "rings" ? (
+              <div className="tab-panel-content">
+                {/* Selection Breadcrumb info bar */}
+                {selectedItems.length > 0 && (
+                  <div className="selection-info-bar">
+                    <span className="info-bar-title">Selected ({selectedItems.length}):</span>
+                    <div className="selected-tags">
+                      {selectedItems.map((item) => {
+                        const name =
+                          resolvedNodes.find((n) => n.id === item.id)?.name ||
+                          item.id.substring(0, 4);
+                        const isActive = activeItem?.id === item.id;
+                        return (
+                          <span
+                            key={item.id}
+                            className={`selection-tag ${isActive ? "active-tag" : ""}`}
+                            onClick={() => selectItem(item.id, item.type, false)}
+                          >
+                            {name}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                <div className="rings-list">
+                  {rings.length === 0 ? (
+                    <div className="empty-state">
+                      <Layers size={24} />
+                      <p>No active rings found</p>
+                      <button onClick={handleAddRing} className="btn btn-sm btn-primary">
+                        Create One
                       </button>
                     </div>
-
-                    <div className="card-body">
-                      {/* Active Rotation Control Slider */}
-                      <div className="control-row">
-                        <label>
-                          Rotation: <span>{Math.round(ring.rotation)}°</span>
-                        </label>
-                        <input
-                          type="range"
-                          min="0"
-                          max="360"
-                          value={ring.rotation}
-                          onMouseDown={() =>
-                            handleRotationStart(ring.id, ring.rotation)
-                          }
-                          onChange={(e) =>
-                            handleRotationChange(ring.id, parseFloat(e.target.value))
-                          }
-                          onMouseUp={(e) =>
-                            handleRotationEnd(
-                              ring.id,
-                              parseFloat((e.target as HTMLInputElement).value)
-                            )
-                          }
-                        />
-                      </div>
-
-                      {/* Dimensional Boundary Controllers */}
-                      <div className="control-double-row">
-                        <div>
-                          <label>Inner Radius</label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={ring.outerRadius - 5}
-                            value={ring.innerRadius}
-                            onChange={(e) =>
-                              handleRadiusChange(
+                  ) : (
+                    rings.map((ring, idx) => {
+                      const isSelected = selectedItems.some((item) => item.id === ring.id);
+                      const isFocused = activeRingId === ring.id;
+                      return (
+                        <div
+                          key={ring.id}
+                          className={`ring-control-card ${isSelected ? "selected" : ""} ${
+                            isFocused ? "focused-ring" : ""
+                          }`}
+                          onClick={(e) => {
+                            const target = e.target as HTMLElement;
+                            if (
+                              target.tagName !== "INPUT" &&
+                              target.tagName !== "TEXTAREA" &&
+                              target.tagName !== "BUTTON" &&
+                              !target.closest("button")
+                            ) {
+                              selectItem(
                                 ring.id,
-                                "innerRadius",
-                                Math.max(0, parseInt(e.target.value) || 0)
-                              )
+                                "ring",
+                                e.shiftKey || e.ctrlKey || e.metaKey
+                              );
+                              setActiveRingId(ring.id);
                             }
-                          />
-                        </div>
-                        <div>
-                          <label>Outer Radius</label>
+                          }}
+                        >
+                        <div className="card-header">
+                          <span className="ring-index">#{rings.length - idx}</span>
                           <input
-                            type="number"
-                            min={ring.innerRadius + 5}
-                            max="500"
-                            value={ring.outerRadius}
-                            onChange={(e) =>
-                              handleRadiusChange(
-                                ring.id,
-                                "outerRadius",
-                                Math.max(0, parseInt(e.target.value) || 0)
-                              )
-                            }
+                            type="text"
+                            className="ring-name-input"
+                            value={ring.name || ""}
+                            onChange={(e) => {
+                              const name = e.target.value;
+                              setProject({
+                                ...project,
+                                mechanism: {
+                                  ...project.mechanism,
+                                  children: (project.mechanism.children || []).map((c) =>
+                                    c.id === ring.id ? { ...c, name } : c
+                                  ),
+                                },
+                              });
+                            }}
                           />
+                          <button
+                            onClick={() => handleDeleteRing(ring)}
+                            className="delete-btn"
+                            title="Delete Ring"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
-                      </div>
-                    </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+
+                        <div className="card-body">
+                          {/* Active Rotation Control Slider */}
+                          <div className="control-row">
+                            <label>
+                              Rotation: <span>{Math.round(ring.rotation)}°</span>
+                            </label>
+                            <input
+                              type="range"
+                              min="0"
+                              max="360"
+                              value={ring.rotation}
+                              onMouseDown={() =>
+                                handleRotationStart(ring.id, ring.rotation)
+                              }
+                              onChange={(e) =>
+                                handleRotationChange(ring.id, parseFloat(e.target.value))
+                              }
+                              onMouseUp={(e) =>
+                                handleRotationEnd(
+                                  ring.id,
+                                  parseFloat((e.target as HTMLInputElement).value)
+                                )
+                              }
+                            />
+                          </div>
+
+                          {/* Dimensional Boundary Controllers */}
+                          <div className="control-double-row">
+                            <div>
+                              <label>Inner Radius</label>
+                              <input
+                                type="number"
+                                min="0"
+                                max={ring.outerRadius - 5}
+                                value={ring.innerRadius}
+                                onChange={(e) =>
+                                  handleRadiusChange(
+                                    ring.id,
+                                    "innerRadius",
+                                    Math.max(0, parseInt(e.target.value) || 0)
+                                  )
+                                }
+                              />
+                            </div>
+                            <div>
+                              <label>Outer Radius</label>
+                              <input
+                                type="number"
+                                min={ring.innerRadius + 5}
+                                max="500"
+                                value={ring.outerRadius}
+                                onChange={(e) =>
+                                  handleRadiusChange(
+                                    ring.id,
+                                    "outerRadius",
+                                    Math.max(0, parseInt(e.target.value) || 0)
+                                  )
+                                }
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="tab-panel-content">
+                {issues.length === 0 ? (
+                  <div className="validation-empty-state">
+                    <div className="success-icon">✓</div>
+                    <p>No issues detected!</p>
+                    <span className="subtitle">Your circular mechanism structure is completely valid.</span>
+                  </div>
+                ) : (
+                  <div className="issues-list">
+                    {issues.map((issue) => {
+                      const isError = issue.severity === "error";
+                      const isWarning = issue.severity === "warning";
+                      return (
+                        <div
+                          key={issue.id}
+                          className={`issue-card ${issue.severity}`}
+                          onClick={() => handleInspectIssue(issue.entityId, issue.entityType)}
+                        >
+                          <div className="issue-card-header">
+                            <span className={`issue-severity-badge ${issue.severity}`}>
+                              {isError ? <XCircle size={11} /> : isWarning ? <AlertTriangle size={11} /> : <Info size={11} />}
+                              {issue.severity}
+                            </span>
+                            <span className="issue-code">{issue.code}</span>
+                          </div>
+                          <p className="issue-message">{issue.message}</p>
+                          {issue.code === "DUPLICATE_UUID" && (
+                            <button
+                              className="btn btn-sm btn-repair"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                autoRepairDuplicates();
+                              }}
+                            >
+                              Auto-Repair Duplicates
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Quick Help Card */}

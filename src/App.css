@@ -623,3 +623,213 @@
 .info-card input[type="color"]:focus {
   border-color: #6366f1;
 }
+
+/* Sidebar Tab navigation and panels */
+.sidebar-tabs {
+  display: flex;
+  background-color: #0b0c0f;
+  border: 1px solid #232530;
+  border-radius: 8px;
+  padding: 2px;
+  margin-bottom: 16px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: #94a3b8;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
+  color: #f1f5f9;
+  background-color: #181922;
+}
+
+.tab-btn.active {
+  background-color: #1e2030;
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.15);
+}
+
+.tab-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 10px;
+  color: white;
+}
+
+.tab-badge.has-errors {
+  background-color: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.4);
+}
+
+.tab-badge.only-warnings {
+  background-color: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.4);
+}
+
+.tab-panel-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+/* Validation Empty State */
+.validation-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px 16px;
+  color: #94a3b8;
+  flex: 1;
+}
+
+.validation-empty-state .success-icon {
+  width: 48px;
+  height: 48px;
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 2px solid #10b981;
+  color: #10b981;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 16px;
+  box-shadow: 0 0 16px rgba(16, 185, 129, 0.2);
+}
+
+.validation-empty-state p {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f1f5f9;
+  margin: 0 0 4px 0;
+}
+
+/* Validation Issues List */
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px;
+}
+
+.issue-card {
+  background-color: #181922;
+  border: 1px solid #232530;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.issue-card:hover {
+  background-color: #1c1d27;
+  border-color: #2d3045;
+  transform: translateY(-1px);
+}
+
+.issue-card.error {
+  border-left: 3px solid #ef4444;
+}
+
+.issue-card.warning {
+  border-left: 3px solid #f59e0b;
+}
+
+.issue-card.info {
+  border-left: 3px solid #3b82f6;
+}
+
+.issue-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.issue-severity-badge {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  letter-spacing: 0.5px;
+}
+
+.issue-severity-badge.error {
+  background-color: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+.issue-severity-badge.warning {
+  background-color: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
+
+.issue-severity-badge.info {
+  background-color: rgba(59, 130, 246, 0.15);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.25);
+}
+
+.issue-code {
+  font-family: monospace;
+  font-size: 10px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.issue-message {
+  font-size: 12px;
+  color: #cbd5e1;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.btn-repair {
+  background-color: rgba(99, 102, 241, 0.15);
+  color: #818cf8;
+  border: 1px solid rgba(99, 102, 241, 0.25);
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  align-self: flex-start;
+  transition: all 0.2s;
+  margin-top: 4px;
+  font-weight: 600;
+}
+
+.btn-repair:hover {
+  background-color: #6366f1;
+  color: white;
+  border-color: #6366f1;
+  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+}
+

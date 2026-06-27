@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import type { Project } from "../../shared/types/project";
 import type { Command } from "../../shared/types/command";
+import { validationRegistry } from "../validation/validationRegistry";
+
 
 /**
  * Creates a clean default Volvelle project structure.
@@ -85,17 +87,42 @@ export const useProjectStore = create<ProjectState>((set) => ({
       },
     })),
   executeCommand: (command) => {
-    command.execute();
-    set((state) => {
-      const newPast = [...state.past, command];
-      if (newPast.length > 100) {
-        newPast.shift();
+    const previousProjectState = useProjectStore.getState().project;
+    try {
+      command.execute();
+      const nextProjectState = useProjectStore.getState().project;
+
+      const validators = validationRegistry.getAllValidators();
+      const errors: string[] = [];
+      for (const val of validators) {
+        const issues = val.validate(nextProjectState);
+        for (const issue of issues) {
+          if (issue.severity === "error") {
+            errors.push(issue.message);
+          }
+        }
       }
-      return {
-        past: newPast,
-        future: [],
-      };
-    });
+
+      if (errors.length > 0) {
+        command.undo();
+        throw new Error(`Command validation failed: \n- ${errors.join("\n- ")}`);
+      }
+
+      set((state) => {
+        const newPast = [...state.past, command];
+        if (newPast.length > 100) {
+          newPast.shift();
+        }
+        return {
+          past: newPast,
+          future: [],
+        };
+      });
+    } catch (err: any) {
+      set({ project: previousProjectState });
+      console.error(err);
+      throw err;
+    }
   },
   undo: () => {
     set((state) => {
