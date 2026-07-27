@@ -23,6 +23,7 @@ import { useSelectionStore } from "./features/selection/selectionStore";
 import { useViewStore } from "./features/project/viewStore";
 import { useValidationStore } from "./features/validation/validationStore";
 import { findRingForNode } from "./shared/utils/geometry";
+import { formatUnitValue, toPixels, getUnitSymbol, type Unit } from "./shared/utils/unitConversion";
 import { resolveProject } from "./features/runtime/mechanismEngine";
 import type {
   Project,
@@ -71,6 +72,10 @@ export default function App() {
     activeRingId,
     setActiveRingId,
   } = useSelectionStore();
+
+  const activeUnit: Unit = project.settings.units || "pixels";
+  const unitSymbol = getUnitSymbol(activeUnit);
+  const stepVal = activeUnit === "pixels" ? 1 : activeUnit === "inches" ? 0.01 : 0.1;
 
   const resolvedNodes = useMemo(() => resolveProject(project), [project]);
 
@@ -720,33 +725,33 @@ export default function App() {
                               {/* Dimensional Boundary Controllers */}
                               <div className="control-double-row">
                                 <div>
-                                  <label>Inner Radius</label>
+                                  <label>Inner Rad ({unitSymbol})</label>
                                   <input
                                     type="number"
                                     min="0"
-                                    max={ring.outerRadius - 5}
-                                    value={ring.innerRadius}
+                                    step={stepVal}
+                                    value={formatUnitValue(ring.innerRadius || 0, activeUnit)}
                                     onChange={(e) =>
                                       handleRadiusChange(
                                         ring.id,
                                         "innerRadius",
-                                        Math.max(0, parseInt(e.target.value) || 0)
+                                        Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit))
                                       )
                                     }
                                   />
                                 </div>
                                 <div>
-                                  <label>Outer Radius</label>
+                                  <label>Outer Rad ({unitSymbol})</label>
                                   <input
                                     type="number"
-                                    min={ring.innerRadius + 5}
-                                    max="500"
-                                    value={ring.outerRadius}
+                                    min="0"
+                                    step={stepVal}
+                                    value={formatUnitValue(ring.outerRadius || 100, activeUnit)}
                                     onChange={(e) =>
                                       handleRadiusChange(
                                         ring.id,
                                         "outerRadius",
-                                        Math.max(0, parseInt(e.target.value) || 0)
+                                        Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit))
                                       )
                                     }
                                   />

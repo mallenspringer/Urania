@@ -546,6 +546,7 @@ export const CanvasWorkspace: React.FC = () => {
           setEditingTextNodeId(null);
         } else {
           setActiveTool("select");
+          useSelectionStore.getState().clearSelection();
         }
         return;
       }

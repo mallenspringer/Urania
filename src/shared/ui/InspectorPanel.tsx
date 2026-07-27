@@ -3,6 +3,7 @@ import { useProjectStore } from "../../features/project/projectStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";
 import { useViewStore } from "../../features/project/viewStore";
 import { findNodeInTree, updateNodeInTree } from "../utils/geometry";
+import { getUnitSymbol, formatUnitValue, toPixels, fromPixels, type Unit } from "../utils/unitConversion";
 import { UpdateNodeCommand, DeleteMultipleNodesCommand, UpdateMultipleNodesCommand } from "../../features/project/commands";
 import { calculateSymmetryGroupUpdates, findSymmetryGroupMembers, computeSymmetryOffsets } from "../utils/symmetryHelper";
 import {
@@ -50,6 +51,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
   const isRightSidebarOpen = useViewStore((state) => state.isRightSidebarOpen);
 
   const activeNode = activeItem ? findNodeInTree(project.mechanism, activeItem.id) : null;
+  const activeUnit: Unit = project.settings.units || "pixels";
+  const unitSymbol = getUnitSymbol(activeUnit);
+  const stepVal = activeUnit === "pixels" ? 1 : activeUnit === "inches" ? 0.01 : 0.1;
 
   const handleDeleteSelected = () => {
     if (selectedItems.length === 1 && activeNode?.type === "ring" && onDeleteRing) {
@@ -120,40 +124,40 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
         <div className="sidebar-section">
           <h3 className="section-title">
             <Maximize size={14} />
-            Canvas Dimensions
+            Canvas Dimensions ({getUnitSymbol(project.settings.units)})
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Width</label>
+              <label>Width ({getUnitSymbol(project.settings.units)})</label>
               <input
                 type="number"
                 id="canvas-width-input"
-                min="100"
-                max="3000"
-                value={project.settings.canvasSize.width}
+                min={project.settings.units === "pixels" ? 100 : project.settings.units === "inches" ? 1 : 10}
+                step={project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 0.01 : 0.1}
+                value={Number(project.settings.canvasSize.width.toFixed(project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 3 : 2))}
                 onChange={(e) =>
                   updateSettings({
                     canvasSize: {
                       ...project.settings.canvasSize,
-                      width: Math.max(100, parseInt(e.target.value) || 800),
+                      width: Math.max(0.1, parseFloat(e.target.value) || 0),
                     },
                   })
                 }
               />
             </div>
             <div>
-              <label>Height</label>
+              <label>Height ({getUnitSymbol(project.settings.units)})</label>
               <input
                 type="number"
                 id="canvas-height-input"
-                min="100"
-                max="3000"
-                value={project.settings.canvasSize.height}
+                min={project.settings.units === "pixels" ? 100 : project.settings.units === "inches" ? 1 : 10}
+                step={project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 0.01 : 0.1}
+                value={Number(project.settings.canvasSize.height.toFixed(project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 3 : 2))}
                 onChange={(e) =>
                   updateSettings({
                     canvasSize: {
                       ...project.settings.canvasSize,
-                      height: Math.max(100, parseInt(e.target.value) || 800),
+                      height: Math.max(0.1, parseFloat(e.target.value) || 0),
                     },
                   })
                 }
@@ -165,7 +169,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             <select
               id="canvas-units-select"
               value={project.settings.units}
-              onChange={(e) => updateSettings({ units: e.target.value as any })}
+              onChange={(e) => updateSettings({ units: e.target.value as Unit })}
               style={{
                 backgroundColor: "#0b0c0f",
                 border: "1px solid #232530",
@@ -175,9 +179,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
                 fontSize: "13px",
               }}
             >
-              <option value="pixels">Pixels</option>
-              <option value="inches">Inches</option>
-              <option value="mm">Millimeters</option>
+              <option value="pixels">Pixels (px)</option>
+              <option value="inches">Inches (in)</option>
+              <option value="millimeters">Millimeters (mm)</option>
             </select>
           </div>
           <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px", cursor: "pointer" }}>
@@ -463,6 +467,54 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
 
   return (
     <aside className={`inspector-panel ${isRightSidebarOpen ? "" : "collapsed"}`} id="inspector-element-panel">
+      {/* Quick Navigation to Project Settings & Deselect */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px 12px",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          backgroundColor: "rgba(15, 23, 42, 0.5)",
+        }}
+      >
+        <button
+          onClick={() => useSelectionStore.getState().clearSelection()}
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "5px",
+            background: "none",
+            border: "none",
+            color: "#818cf8",
+            fontSize: "11px",
+            fontWeight: 600,
+            cursor: "pointer",
+            padding: 0,
+          }}
+          title="Deselect active selection to view Project & Grid Settings"
+        >
+          <Sliders size={13} />
+          <span>Project Settings</span>
+        </button>
+        <button
+          onClick={() => useSelectionStore.getState().clearSelection()}
+          style={{
+            background: "rgba(255, 255, 255, 0.06)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            borderRadius: "4px",
+            color: "#94a3b8",
+            fontSize: "10px",
+            fontWeight: 600,
+            cursor: "pointer",
+            padding: "2px 6px",
+          }}
+          title="Deselect All Objects (Esc)"
+        >
+          Deselect All
+        </button>
+      </div>
+
       {/* Node Header Info */}
       <div className="sidebar-section">
         <div className="inspector-header">
@@ -667,28 +719,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Inner Rad</label>
+              <label>Inner Rad ({unitSymbol})</label>
               <input
                 type="number"
                 id="ring-inner-radius"
                 min="0"
-                max={activeNode.outerRadius - 5}
-                value={activeNode.innerRadius || 0}
+                step={stepVal}
+                value={formatUnitValue(activeNode.innerRadius || 0, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ innerRadius: Math.max(0, parseInt(e.target.value) || 0) })}
-                onBlur={(e) => handleCommitEdit({ innerRadius: Math.max(0, parseInt(e.target.value) || 0) })}
+                onChange={(e) => handleTransientEdit({ innerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ innerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
             <div>
-              <label>Outer Rad</label>
+              <label>Outer Rad ({unitSymbol})</label>
               <input
                 type="number"
                 id="ring-outer-radius"
-                min={activeNode.innerRadius + 5}
-                value={activeNode.outerRadius || 100}
+                min="0"
+                step={stepVal}
+                value={formatUnitValue(activeNode.outerRadius || 100, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ outerRadius: Math.max(0, parseInt(e.target.value) || 0) })}
-                onBlur={(e) => handleCommitEdit({ outerRadius: Math.max(0, parseInt(e.target.value) || 0) })}
+                onChange={(e) => handleTransientEdit({ outerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ outerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
           </div>
@@ -871,25 +924,27 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Position X</label>
+              <label>Position X ({unitSymbol})</label>
               <input
                 type="number"
                 id="transform-x"
-                value={Math.round(activeNode.transform.x)}
+                step={stepVal}
+                value={formatUnitValue(activeNode.transform.x || 0, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ transform: { x: parseFloat(e.target.value) || 0 } })}
-                onBlur={(e) => handleCommitEdit({ transform: { x: parseFloat(e.target.value) || 0 } })}
+                onChange={(e) => handleTransientEdit({ transform: { x: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
+                onBlur={(e) => handleCommitEdit({ transform: { x: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
               />
             </div>
             <div>
-              <label>Position Y</label>
+              <label>Position Y ({unitSymbol})</label>
               <input
                 type="number"
                 id="transform-y"
-                value={Math.round(activeNode.transform.y)}
+                step={stepVal}
+                value={formatUnitValue(activeNode.transform.y || 0, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ transform: { y: parseFloat(e.target.value) || 0 } })}
-                onBlur={(e) => handleCommitEdit({ transform: { y: parseFloat(e.target.value) || 0 } })}
+                onChange={(e) => handleTransientEdit({ transform: { y: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
+                onBlur={(e) => handleCommitEdit({ transform: { y: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
               />
             </div>
           </div>
@@ -948,15 +1003,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Circle Parameters
           </h3>
           <div className="info-card">
-            <label>Radius</label>
+            <label>Radius ({unitSymbol})</label>
             <input
               type="number"
               id="circle-radius"
-              min="1"
-              value={activeNode.radius || 10}
+              min="0.1"
+              step={stepVal}
+              value={formatUnitValue(activeNode.radius || 10, activeUnit)}
               onFocus={handleStartEdit}
-              onChange={(e) => handleTransientEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
-              onBlur={(e) => handleCommitEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
+              onChange={(e) => handleTransientEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+              onBlur={(e) => handleCommitEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
             />
           </div>
         </div>
@@ -971,27 +1027,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Width</label>
+              <label>Width ({unitSymbol})</label>
               <input
                 type="number"
                 id="rect-width"
-                min="1"
-                value={activeNode.width || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.width || 10, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ width: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ width: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
             <div>
-              <label>Height</label>
+              <label>Height ({unitSymbol})</label>
               <input
                 type="number"
                 id="rect-height"
-                min="1"
-                value={activeNode.height || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.height || 10, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ height: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ height: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
           </div>
@@ -1007,15 +1065,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Radius</label>
+              <label>Radius ({unitSymbol})</label>
               <input
                 type="number"
                 id="polygon-radius"
-                min="1"
-                value={activeNode.radius || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.radius || 10, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
             <div>
@@ -1085,40 +1144,43 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Base Width</label>
+              <label>Base Width ({unitSymbol})</label>
               <input
                 type="number"
                 id="trapezoid-basewidth"
-                min="1"
-                value={activeNode.baseWidth || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.baseWidth || 60, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ baseWidth: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ baseWidth: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ baseWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ baseWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
             <div>
-              <label>Top Width</label>
+              <label>Top Width ({unitSymbol})</label>
               <input
                 type="number"
                 id="trapezoid-topwidth"
-                min="1"
-                value={activeNode.topWidth || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.topWidth || 40, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ topWidth: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ topWidth: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ topWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ topWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
           </div>
           <div className="info-card" style={{ marginTop: "10px" }}>
-            <label>Height</label>
+            <label>Height ({unitSymbol})</label>
             <input
               type="number"
               id="trapezoid-height"
-              min="1"
-              value={activeNode.height || 10}
+              min="0.1"
+              step={stepVal}
+              value={formatUnitValue(activeNode.height || 50, activeUnit)}
               onFocus={handleStartEdit}
-              onChange={(e) => handleTransientEdit({ height: Math.max(1, parseInt(e.target.value) || 1) })}
-              onBlur={(e) => handleCommitEdit({ height: Math.max(1, parseInt(e.target.value) || 1) })}
+              onChange={(e) => handleTransientEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+              onBlur={(e) => handleCommitEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
             />
           </div>
         </div>
@@ -1132,15 +1194,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Crescent Parameters
           </h3>
           <div className="info-card">
-            <label>Outer Radius</label>
+            <label>Outer Radius ({unitSymbol})</label>
             <input
               type="number"
               id="crescent-radius"
-              min="1"
-              value={activeNode.radius || 10}
+              min="0.1"
+              step={stepVal}
+              value={formatUnitValue(activeNode.radius || 10, activeUnit)}
               onFocus={handleStartEdit}
-              onChange={(e) => handleTransientEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
-              onBlur={(e) => handleCommitEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
+              onChange={(e) => handleTransientEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+              onBlur={(e) => handleCommitEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
             />
           </div>
           <div className="info-card" style={{ marginTop: "10px" }}>
@@ -1169,27 +1232,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Outer Radius</label>
+              <label>Outer Radius ({unitSymbol})</label>
               <input
                 type="number"
                 id="star-outer-radius"
-                min="1"
-                value={activeNode.outerRadius || 35}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.outerRadius || 35, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ outerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ outerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ outerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ outerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
             <div>
-              <label>Inner Radius</label>
+              <label>Inner Radius ({unitSymbol})</label>
               <input
                 type="number"
                 id="star-inner-radius"
-                min="1"
-                value={activeNode.innerRadius || 15}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.innerRadius || 15, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ innerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ innerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ innerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ innerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
           </div>
@@ -1218,27 +1283,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           </h3>
           <div className="info-card control-double-row">
             <div>
-              <label>Length</label>
+              <label>Length ({unitSymbol})</label>
               <input
                 type="number"
                 id="line-length"
-                min="1"
-                value={activeNode.length || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.length || 10, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ length: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ length: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ length: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ length: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
             <div>
-              <label>Thickness</label>
+              <label>Thickness ({unitSymbol})</label>
               <input
                 type="number"
                 id="line-thickness"
-                min="1"
-                value={activeNode.thickness || 2}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.thickness || 2, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ thickness: Math.max(1, parseInt(e.target.value) || 1) })}
-                onBlur={(e) => handleCommitEdit({ thickness: Math.max(1, parseInt(e.target.value) || 1) })}
+                onChange={(e) => handleTransientEdit({ thickness: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ thickness: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
               />
             </div>
           </div>
@@ -1422,15 +1489,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
 
           {activeNode.shape.type === "circle" && (
             <div className="info-card">
-              <label>Radius</label>
+              <label>Radius ({unitSymbol})</label>
               <input
                 type="number"
                 id="window-circle-radius"
-                min="1"
-                value={activeNode.shape.radius || 10}
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.shape.radius || 10, activeUnit)}
                 onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ shape: { radius: Math.max(1, parseInt(e.target.value) || 1) } })}
-                onBlur={(e) => handleCommitEdit({ shape: { radius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                onChange={(e) => handleTransientEdit({ shape: { radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                onBlur={(e) => handleCommitEdit({ shape: { radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
               />
             </div>
           )}
@@ -1438,27 +1506,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           {activeNode.shape.type === "rectangle" && (
             <div className="info-card control-double-row">
               <div>
-                <label>Width</label>
+                <label>Width ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-rect-width"
-                  min="1"
-                  value={activeNode.shape.width || 10}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.width || 10, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { width: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { width: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
               <div>
-                <label>Height</label>
+                <label>Height ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-rect-height"
-                  min="1"
-                  value={activeNode.shape.height || 10}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.height || 10, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { height: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { height: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
             </div>
@@ -1467,15 +1537,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           {activeNode.shape.type === "polygon" && (
             <div className="info-card control-double-row">
               <div>
-                <label>Radius</label>
+                <label>Radius ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-poly-radius"
-                  min="1"
-                  value={activeNode.shape.radius || 10}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.radius || 10, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { radius: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { radius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
               <div>
@@ -1497,27 +1568,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           {activeNode.shape.type === "star" && (
             <div className="info-card control-double-row">
               <div>
-                <label>Outer Radius</label>
+                <label>Outer Radius ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-star-outer-radius"
-                  min="1"
-                  value={activeNode.shape.outerRadius || 35}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.outerRadius || 35, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { outerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { outerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { outerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { outerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
               <div>
-                <label>Inner Radius</label>
+                <label>Inner Radius ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-star-inner-radius"
-                  min="1"
-                  value={activeNode.shape.innerRadius || 15}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.innerRadius || 15, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { innerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { innerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { innerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { innerRadius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
             </div>
@@ -1526,27 +1599,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           {activeNode.shape.type === "trapezoid" && (
             <div className="info-card control-double-row">
               <div>
-                <label>Base Width</label>
+                <label>Base Width ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-trap-basewidth"
-                  min="1"
-                  value={activeNode.shape.baseWidth || 60}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.baseWidth || 60, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { baseWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { baseWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { baseWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { baseWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
               <div>
-                <label>Top Width</label>
+                <label>Top Width ({unitSymbol})</label>
                 <input
                   type="number"
                   id="window-trap-topwidth"
-                  min="1"
-                  value={activeNode.shape.topWidth || 40}
+                  min="0.1"
+                  step={stepVal}
+                  value={formatUnitValue(activeNode.shape.topWidth || 40, activeUnit)}
                   onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ shape: { topWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
-                  onBlur={(e) => handleCommitEdit({ shape: { topWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onChange={(e) => handleTransientEdit({ shape: { topWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { topWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) } })}
                 />
               </div>
             </div>
@@ -1702,32 +1777,33 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
           {activeNode.type === "arcText" && (
             <>
               <div className="info-card" style={{ marginTop: "10px" }}>
-                <label>Radius: {Math.round(activeNode.radius)}</label>
+                <label>Radius ({unitSymbol}): {formatUnitValue(activeNode.radius || 100, activeUnit)}</label>
                 <input
                   type="range"
                   id="arctext-radius-slider"
-                  min="10"
-                  max="400"
+                  min={toPixels(1, activeUnit)}
+                  max={toPixels(400, activeUnit)}
+                  step={stepVal}
                   value={activeNode.radius || 100}
                   onMouseDown={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ radius: parseInt(e.target.value) })}
-                  onMouseUp={(e) => handleCommitEdit({ radius: parseInt((e.target as HTMLInputElement).value) })}
+                  onChange={(e) => handleTransientEdit({ radius: parseFloat(e.target.value) })}
+                  onMouseUp={(e) => handleCommitEdit({ radius: parseFloat((e.target as HTMLInputElement).value) })}
                 />
               </div>
               <div className="info-card" style={{ marginTop: "10px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                  <label htmlFor="text-kerning-slider">Kerning (Letter Spacing)</label>
+                  <label htmlFor="text-kerning-slider">Kerning ({unitSymbol})</label>
                   <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>
-                    {activeNode.kerning || 0}px
+                    {formatUnitValue(activeNode.kerning || 0, activeUnit)}{unitSymbol}
                   </span>
                 </div>
                 <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                   <input
                     type="range"
                     id="text-kerning-slider"
-                    min="-10"
-                    max="50"
-                    step="0.5"
+                    min={toPixels(-10, activeUnit)}
+                    max={toPixels(50, activeUnit)}
+                    step={stepVal}
                     value={activeNode.kerning || 0}
                     onMouseDown={handleStartEdit}
                     onChange={(e) => handleTransientEdit({ kerning: parseFloat(e.target.value) || 0 })}
@@ -1737,14 +1813,12 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
                   <input
                     type="number"
                     id="text-kerning-input"
-                    min="-10"
-                    max="50"
-                    step="0.5"
-                    value={activeNode.kerning || 0}
+                    step={stepVal}
+                    value={formatUnitValue(activeNode.kerning || 0, activeUnit)}
                     onFocus={handleStartEdit}
-                    onChange={(e) => handleTransientEdit({ kerning: parseFloat(e.target.value) || 0 })}
-                    onBlur={(e) => handleCommitEdit({ kerning: parseFloat(e.target.value) || 0 })}
-                    style={{ width: "60px" }}
+                    onChange={(e) => handleTransientEdit({ kerning: toPixels(parseFloat(e.target.value) || 0, activeUnit) })}
+                    onBlur={(e) => handleCommitEdit({ kerning: toPixels(parseFloat(e.target.value) || 0, activeUnit) })}
+                    style={{ width: "65px" }}
                   />
                 </div>
               </div>
@@ -1928,29 +2002,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             <>
               <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
                 <div>
-                  <label>Tab Width</label>
+                  <label>Tab Width ({unitSymbol})</label>
                   <input
                     type="number"
                     id="ring-tab-width"
-                    min="5"
-                    max="150"
-                    value={activeNode.tabWidth ?? 30}
+                    min="0.1"
+                    step={stepVal}
+                    value={formatUnitValue(activeNode.tabWidth ?? 30, activeUnit)}
                     onFocus={handleStartEdit}
-                    onChange={(e) => handleTransientEdit({ tabWidth: Math.max(5, parseInt(e.target.value) || 30) })}
-                    onBlur={(e) => handleCommitEdit({ tabWidth: Math.max(5, parseInt(e.target.value) || 30) })}
+                    onChange={(e) => handleTransientEdit({ tabWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                    onBlur={(e) => handleCommitEdit({ tabWidth: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
                   />
                 </div>
                 <div>
-                  <label>Tab Height</label>
+                  <label>Tab Height ({unitSymbol})</label>
                   <input
                     type="number"
                     id="ring-tab-height"
-                    min="5"
-                    max="150"
-                    value={activeNode.tabHeight ?? 20}
+                    min="0.1"
+                    step={stepVal}
+                    value={formatUnitValue(activeNode.tabHeight ?? 20, activeUnit)}
                     onFocus={handleStartEdit}
-                    onChange={(e) => handleTransientEdit({ tabHeight: Math.max(5, parseInt(e.target.value) || 20) })}
-                    onBlur={(e) => handleCommitEdit({ tabHeight: Math.max(5, parseInt(e.target.value) || 20) })}
+                    onChange={(e) => handleTransientEdit({ tabHeight: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                    onBlur={(e) => handleCommitEdit({ tabHeight: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
                   />
                 </div>
               </div>

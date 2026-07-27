@@ -847,6 +847,9 @@ export const selectTool: Tool = {
       const selectStore = useSelectionStore.getState();
 
       if (dx < 4 && dy < 4) {
+        if (!context.isShift) {
+          selectStore.clearSelection();
+        }
         return;
       }
 

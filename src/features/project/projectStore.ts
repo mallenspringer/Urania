@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { Project } from "../../shared/types/project";
 import type { Command } from "../../shared/types/command";
 import { validationRegistry } from "../validation/validationRegistry";
+import { convertUnit } from "../../shared/utils/unitConversion";
 
 
 /**
@@ -77,15 +78,23 @@ export const useProjectStore = create<ProjectState>((set) => ({
       },
     })),
   updateSettings: (settings) =>
-    set((state) => ({
-      project: {
-        ...state.project,
-        settings: {
-          ...state.project.settings,
-          ...settings,
+    set((state) => {
+      let newSettings = { ...state.project.settings, ...settings };
+      if (settings.units && settings.units !== state.project.settings.units) {
+        const oldUnit = state.project.settings.units;
+        const newUnit = settings.units;
+        newSettings.canvasSize = {
+          width: convertUnit(state.project.settings.canvasSize.width, oldUnit, newUnit),
+          height: convertUnit(state.project.settings.canvasSize.height, oldUnit, newUnit),
+        };
+      }
+      return {
+        project: {
+          ...state.project,
+          settings: newSettings,
         },
-      },
-    })),
+      };
+    }),
   executeCommand: (command) => {
     const previousProjectState = useProjectStore.getState().project;
     try {
