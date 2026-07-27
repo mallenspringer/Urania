@@ -36,8 +36,9 @@ describe("Tool System", () => {
     expect(ids).toContain("create-window-circle");
     expect(ids).toContain("create-text");
     expect(ids).toContain("create-arcText");
-    expect(ids).toContain("create-guide-radial");
-    expect(ids).toContain("create-guide-circular");
+    expect(ids).toContain("create-line");
+    expect(ids).toContain("create-curve");
+    expect(ids).toContain("create-arc");
   });
 
   it("should run rectangle shape drawing tool successfully", () => {

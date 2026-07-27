@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useProjectStore } from "../../features/project/projectStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";
+import { useViewStore } from "../../features/project/viewStore";
 import { findNodeInTree } from "../utils/geometry";
-import { UpdateNodeCommand } from "../../features/project/commands";
+import { UpdateNodeCommand, DeleteMultipleNodesCommand, UpdateMultipleNodesCommand } from "../../features/project/commands";
+import { calculateSymmetryGroupUpdates, findSymmetryGroupMembers, computeSymmetryOffsets } from "../utils/symmetryHelper";
 import {
   Sliders,
   Eye,
@@ -13,7 +15,15 @@ import {
   Palette,
   Type,
   Maximize,
-  Compass
+  Compass,
+  Bold,
+  Italic,
+  Underline,
+  Strikethrough,
+  ChevronDown,
+  ChevronRight,
+  Square,
+  Trash2,
 } from "lucide-react";
 
 // Deep merge helper to apply nested object patches safely
@@ -42,14 +52,32 @@ function updateNodeInTree(tree: any, id: string, patch: any): boolean {
   return false;
 }
 
-export const InspectorPanel: React.FC = () => {
+interface InspectorPanelProps {
+  onDeleteRing?: (ring: any) => void;
+}
+
+export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) => {
   const { project, setProject, executeCommand, updateMetadata, updateSettings } = useProjectStore();
-  const { activeItem } = useSelectionStore();
+  const { activeItem, selectedItems } = useSelectionStore();
+  const isRightSidebarOpen = useViewStore((state) => state.isRightSidebarOpen);
+
+  const activeNode = activeItem ? findNodeInTree(project.mechanism, activeItem.id) : null;
+
+  const handleDeleteSelected = () => {
+    if (selectedItems.length === 1 && activeNode?.type === "ring" && onDeleteRing) {
+      onDeleteRing(activeNode);
+      return;
+    }
+    const ids = selectedItems.map((item) => item.id);
+    if (ids.length > 0) {
+      executeCommand(new DeleteMultipleNodesCommand(ids));
+    }
+  };
 
   const originalNodeRef = useRef<any>(null);
   const [localValState, setLocalValState] = useState<Record<string, any>>({});
-
-  const activeNode = activeItem ? findNodeInTree(project.mechanism, activeItem.id) : null;
+  const [isGrabTabExpanded, setIsGrabTabExpanded] = useState(true);
+  const [linkSymmetry, setLinkSymmetry] = useState(true);
 
   // Track local value states for text area/inputs to avoid keyboard lag
   useEffect(() => {
@@ -61,14 +89,16 @@ export const InspectorPanel: React.FC = () => {
         stroke: activeNode.style?.stroke || "",
         windowFill: activeNode.shape?.style?.fill || "",
         windowStroke: activeNode.shape?.style?.stroke || "",
+        label: activeNode.label || "",
+        tabLabel: activeNode.tabLabel || "",
       });
     }
-  }, [activeNode?.id, activeNode?.content, activeNode?.name, activeNode?.style?.fill, activeNode?.style?.stroke, activeNode?.shape?.style?.fill, activeNode?.shape?.style?.stroke]);
+  }, [activeNode?.id, activeNode?.content, activeNode?.name, activeNode?.style?.fill, activeNode?.style?.stroke, activeNode?.shape?.style?.fill, activeNode?.shape?.style?.stroke, activeNode?.label, activeNode?.tabLabel]);
 
   if (!activeNode) {
     // Render Project / Mechanism settings when nothing is selected
     return (
-      <aside className="inspector-panel" id="inspector-project-settings">
+      <aside className={`inspector-panel ${isRightSidebarOpen ? "" : "collapsed"}`} id="inspector-project-settings">
         <div className="sidebar-section">
           <h3 className="section-title">
             <Settings size={14} />
@@ -162,6 +192,16 @@ export const InspectorPanel: React.FC = () => {
               <option value="mm">Millimeters</option>
             </select>
           </div>
+          <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px", cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              id="settings-show-grab-tabs-checkbox"
+              checked={project.settings.showGrabTabs !== false}
+              onChange={(e) => updateSettings({ showGrabTabs: e.target.checked })}
+              style={{ accentColor: "#6366f1", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Include Grab Tabs in Export</span>
+          </label>
         </div>
       </aside>
     );
@@ -174,11 +214,22 @@ export const InspectorPanel: React.FC = () => {
 
   const handleTransientEdit = (patch: any) => {
     const currentMechanism = JSON.parse(JSON.stringify(project.mechanism));
-    if (updateNodeInTree(currentMechanism, activeNode.id, patch)) {
+    if (linkSymmetry && activeNode?.symmetryGroupId) {
+      const updates = calculateSymmetryGroupUpdates(currentMechanism, activeNode, patch);
+      for (const u of updates) {
+        updateNodeInTree(currentMechanism, u.nodeId, u.newNode);
+      }
       setProject({
         ...project,
         mechanism: currentMechanism,
       });
+    } else {
+      if (updateNodeInTree(currentMechanism, activeNode.id, patch)) {
+        setProject({
+          ...project,
+          mechanism: currentMechanism,
+        });
+      }
     }
   };
 
@@ -198,28 +249,243 @@ export const InspectorPanel: React.FC = () => {
 
     // 2. Perform patched command execution
     const origSnapshot = originalNodeRef.current;
-    const finalNode = JSON.parse(JSON.stringify(origSnapshot));
-    deepMerge(finalNode, patch);
+    if (linkSymmetry && origSnapshot.symmetryGroupId) {
+      const updates = calculateSymmetryGroupUpdates(rolledBackMechanism, origSnapshot, patch);
+      if (updates.length > 0) {
+        executeCommand(new UpdateMultipleNodesCommand(updates));
+      } else {
+        const finalNode = JSON.parse(JSON.stringify(origSnapshot));
+        deepMerge(finalNode, patch);
+        executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, finalNode));
+      }
+    } else {
+      const finalNode = JSON.parse(JSON.stringify(origSnapshot));
+      deepMerge(finalNode, patch);
 
-    if (JSON.stringify(origSnapshot) !== JSON.stringify(finalNode)) {
-      executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, finalNode));
+      if (JSON.stringify(origSnapshot) !== JSON.stringify(finalNode)) {
+        executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, finalNode));
+      }
     }
     originalNodeRef.current = null;
   };
 
   const commitImmediateField = (patch: any) => {
     const origSnapshot = JSON.parse(JSON.stringify(activeNode));
+    if (linkSymmetry && origSnapshot.symmetryGroupId) {
+      const updates = calculateSymmetryGroupUpdates(project.mechanism, origSnapshot, patch);
+      if (updates.length > 0) {
+        executeCommand(new UpdateMultipleNodesCommand(updates));
+        return;
+      }
+    }
     const updated = JSON.parse(JSON.stringify(origSnapshot));
     deepMerge(updated, patch);
     executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, updated));
   };
 
+  const handleToggleNodeSymmetryLink = () => {
+    if (!activeNode?.symmetryGroupId) return;
+    const isUnlinked = !!activeNode.symmetryUnlinked;
+    const origSnapshot = JSON.parse(JSON.stringify(activeNode));
+    const updatedNode = JSON.parse(JSON.stringify(activeNode));
+
+    if (isUnlinked) {
+      // Re-linking! Compute position/rotation offsets relative to group
+      const offsets = computeSymmetryOffsets(project.mechanism, activeNode);
+      updatedNode.symmetryUnlinked = false;
+      updatedNode.symmetryOffsets = offsets;
+    } else {
+      // Decoupling!
+      updatedNode.symmetryUnlinked = true;
+    }
+
+    executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, updatedNode));
+  };
+
+  const handleUnlinkSymmetryGroup = () => {
+    if (!activeNode?.symmetryGroupId) return;
+    const members = findSymmetryGroupMembers(project.mechanism, activeNode.symmetryGroupId);
+    const updates = members.map((m) => {
+      const oldNode = JSON.parse(JSON.stringify(m));
+      const newNode = JSON.parse(JSON.stringify(m));
+      delete newNode.symmetryGroupId;
+      delete newNode.symmetryIndex;
+      delete newNode.symmetryCount;
+      return { nodeId: m.id, oldNode, newNode };
+    });
+    executeCommand(new UpdateMultipleNodesCommand(updates));
+  };
+
+  const handleSelectAllSymmetryCopies = () => {
+    if (!activeNode?.symmetryGroupId) return;
+    const members = findSymmetryGroupMembers(project.mechanism, activeNode.symmetryGroupId);
+    const selection = members.map((m) => ({ id: m.id, type: m.type }));
+    useSelectionStore.getState().setSelection(selection);
+  };
+
+  const handleToggleObjectFunction = () => {
+    if (!activeNode) return;
+
+    if (linkSymmetry && activeNode.symmetryGroupId && !activeNode.symmetryUnlinked) {
+      const members = findSymmetryGroupMembers(project.mechanism, activeNode.symmetryGroupId);
+      const linkedMembers = members.filter((m) => !m.symmetryUnlinked);
+
+      if (linkedMembers.length > 0) {
+        const isConvertingToSolid = activeNode.type === "window";
+
+        const updates = linkedMembers.map((m) => {
+          const oldNode = JSON.parse(JSON.stringify(m));
+
+          if (isConvertingToSolid) {
+            if (m.type !== "window") {
+              return { nodeId: m.id, oldNode, newNode: m };
+            }
+            // Convert Window Cutout -> Solid Object
+            const originalShape = (m as any).shape || {};
+            const solidType = (m as any).savedSolidType || originalShape.type || "rectangle";
+            const solidStyle = (m as any).savedSolidStyle || originalShape.style || { fill: "#3b82f6", stroke: "#1e3a8a", strokeWidth: 1.5 };
+            
+            if (!solidStyle.fill || solidStyle.fill === "transparent") {
+              solidStyle.fill = "#cbd5e1";
+            }
+
+            const restoredSolidNode: any = {
+              ...originalShape,
+              id: m.id,
+              type: solidType,
+              name: m.name ? m.name.replace(/ Cutout$/g, "") : "Solid Object",
+              visible: m.visible !== false,
+              locked: !!m.locked,
+              transform: m.transform,
+              style: solidStyle,
+              export: { artwork: true, cut: false, fold: false },
+              symmetryGroupId: m.symmetryGroupId,
+              symmetryIndex: m.symmetryIndex,
+              symmetryCount: m.symmetryCount,
+              symmetryUnlinked: m.symmetryUnlinked,
+              symmetryOffsets: m.symmetryOffsets,
+            };
+            return { nodeId: m.id, oldNode, newNode: restoredSolidNode };
+          } else {
+            if (m.type === "window") {
+              return { nodeId: m.id, oldNode, newNode: m };
+            }
+            // Convert Solid Object -> Window Cutout
+            const solidType = m.type;
+            const solidStyle = (m as any).style ? JSON.parse(JSON.stringify((m as any).style)) : { fill: "#3b82f6", stroke: "#1e3a8a", strokeWidth: 1.5 };
+
+            const childShape = {
+              ...m,
+              id: `${m.id}-shape`,
+              transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+              style: m.type === "text" || m.type === "arcText" ? { fill: "transparent" } : {},
+              export: { artwork: false, cut: true, fold: false },
+            };
+
+            const cleanName = m.name ? m.name.replace(/ Cutout$/g, "") : "Window";
+            const windowCutoutNode: any = {
+              id: m.id,
+              type: "window",
+              name: `${cleanName} Cutout`,
+              visible: m.visible !== false,
+              locked: !!m.locked,
+              transform: m.transform,
+              export: { artwork: false, cut: true, fold: false },
+              savedSolidType: solidType,
+              savedSolidStyle: solidStyle,
+              shape: childShape,
+              symmetryGroupId: m.symmetryGroupId,
+              symmetryIndex: m.symmetryIndex,
+              symmetryCount: m.symmetryCount,
+              symmetryUnlinked: m.symmetryUnlinked,
+              symmetryOffsets: m.symmetryOffsets,
+            };
+            return { nodeId: m.id, oldNode, newNode: windowCutoutNode };
+          }
+        });
+
+        executeCommand(new UpdateMultipleNodesCommand(updates));
+        return;
+      }
+    }
+
+    // Fallback single node conversion
+    const origSnapshot = JSON.parse(JSON.stringify(activeNode));
+    if (activeNode.type === "window") {
+      const originalShape = activeNode.shape || {};
+      const solidType = activeNode.savedSolidType || originalShape.type || "rectangle";
+      const solidStyle = activeNode.savedSolidStyle || originalShape.style || { fill: "#3b82f6", stroke: "#1e3a8a", strokeWidth: 1.5 };
+      
+      if (!solidStyle.fill || solidStyle.fill === "transparent") {
+        solidStyle.fill = "#cbd5e1";
+      }
+
+      const restoredSolidNode: any = {
+        ...originalShape,
+        id: activeNode.id,
+        type: solidType,
+        name: activeNode.name ? activeNode.name.replace(/ Cutout$/g, "") : "Solid Object",
+        visible: activeNode.visible !== false,
+        locked: !!activeNode.locked,
+        transform: activeNode.transform,
+        style: solidStyle,
+        export: { artwork: true, cut: false, fold: false },
+        symmetryGroupId: activeNode.symmetryGroupId,
+        symmetryIndex: activeNode.symmetryIndex,
+        symmetryCount: activeNode.symmetryCount,
+        symmetryUnlinked: activeNode.symmetryUnlinked,
+        symmetryOffsets: activeNode.symmetryOffsets,
+      };
+
+      executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, restoredSolidNode));
+    } else {
+      const solidType = activeNode.type;
+      const solidStyle = activeNode.style ? JSON.parse(JSON.stringify(activeNode.style)) : { fill: "#3b82f6", stroke: "#1e3a8a", strokeWidth: 1.5 };
+
+      const childShape = {
+        ...activeNode,
+        id: `${activeNode.id}-shape`,
+        transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+        style: activeNode.type === "text" || activeNode.type === "arcText" ? { fill: "transparent" } : {},
+        export: { artwork: false, cut: true, fold: false },
+      };
+
+      const cleanName = activeNode.name ? activeNode.name.replace(/ Cutout$/g, "") : "Window";
+      const windowCutoutNode: any = {
+        id: activeNode.id,
+        type: "window",
+        name: `${cleanName} Cutout`,
+        visible: activeNode.visible !== false,
+        locked: !!activeNode.locked,
+        transform: activeNode.transform,
+        export: { artwork: false, cut: true, fold: false },
+        savedSolidType: solidType,
+        savedSolidStyle: solidStyle,
+        shape: childShape,
+        symmetryGroupId: activeNode.symmetryGroupId,
+        symmetryIndex: activeNode.symmetryIndex,
+        symmetryCount: activeNode.symmetryCount,
+        symmetryUnlinked: activeNode.symmetryUnlinked,
+        symmetryOffsets: activeNode.symmetryOffsets,
+      };
+
+      executeCommand(new UpdateNodeCommand(activeNode.id, origSnapshot, windowCutoutNode));
+    }
+  };
+
   return (
-    <aside className="inspector-panel" id="inspector-element-panel">
+    <aside className={`inspector-panel ${isRightSidebarOpen ? "" : "collapsed"}`} id="inspector-element-panel">
       {/* Node Header Info */}
       <div className="sidebar-section">
         <div className="inspector-header">
-          <span className="node-type-badge">{activeNode.type}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <span className="node-type-badge">{activeNode.type}</span>
+            {selectedItems.length > 1 && (
+              <span className="multi-select-badge" style={{ fontSize: "10px", color: "#c084fc", backgroundColor: "rgba(192, 132, 252, 0.15)", padding: "2px 6px", borderRadius: "4px", fontWeight: "700" }}>
+                {selectedItems.length} Selected
+              </span>
+            )}
+          </div>
           <div className="node-visibility-toggle">
             <button
               className={`visibility-btn ${activeNode.visible !== false ? "active" : ""}`}
@@ -234,6 +500,13 @@ export const InspectorPanel: React.FC = () => {
               title="Toggle Lock State"
             >
               {activeNode.locked ? <Lock size={14} /> : <Unlock size={14} />}
+            </button>
+            <button
+              className="delete-node-btn"
+              onClick={handleDeleteSelected}
+              title={selectedItems.length > 1 ? `Delete ${selectedItems.length} Selected Objects` : "Delete Object"}
+            >
+              <Trash2 size={14} />
             </button>
           </div>
         </div>
@@ -257,6 +530,144 @@ export const InspectorPanel: React.FC = () => {
             }}
           />
         </div>
+
+        {/* Object Function Indicator & Solid / Cutout Conversion Card */}
+        {activeNode.type !== "ring" && activeNode.type !== "sector" && activeNode.type !== "tab" && activeNode.type !== "guide" && (
+          <div className="info-card" style={{ marginTop: "10px", padding: "10px", backgroundColor: "rgba(255, 255, 255, 0.03)", borderRadius: "8px", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "600" }}>
+                Object Function
+              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                {activeNode.transformMode === "radial" && (activeNode.type === "rectangle" || activeNode.type === "trapezoid") && (
+                  <span style={{
+                    fontSize: "10px",
+                    fontWeight: "bold",
+                    padding: "2px 7px",
+                    borderRadius: "12px",
+                    backgroundColor: "rgba(192, 132, 252, 0.15)",
+                    color: "#c084fc",
+                    border: "1px solid rgba(192, 132, 252, 0.35)",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "4px",
+                  }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M3 20 Q12 2 21 20" />
+                      <path d="M6 16 Q12 7 18 16" />
+                    </svg>
+                    Radial Warp
+                  </span>
+                )}
+                <span style={{
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                  backgroundColor: activeNode.type === "window" ? "rgba(99, 102, 241, 0.2)" : "rgba(16, 185, 129, 0.2)",
+                  color: activeNode.type === "window" ? "#818cf8" : "#34d399",
+                  border: activeNode.type === "window" ? "1px solid rgba(99, 102, 241, 0.4)" : "1px solid rgba(16, 185, 129, 0.4)",
+                }}>
+                  {activeNode.type === "window" ? `Cutout Window (${activeNode.shape?.type || "Shape"})` : `Solid ${activeNode.type.charAt(0).toUpperCase() + activeNode.type.slice(1)}`}
+                </span>
+              </div>
+            </div>
+            <button
+              className="btn btn-sm btn-secondary"
+              style={{ width: "100%", justifyContent: "center", gap: "6px" }}
+              onClick={handleToggleObjectFunction}
+            >
+              {activeNode.type === "window" ? <Square size={13} /> : <Eye size={13} />}
+              {activeNode.type === "window" ? "Convert to Solid Object" : "Convert to Window Cutout"}
+            </button>
+
+            {/* Radial Warp / Cartesian conversion — only for warp-eligible solid shapes */}
+            {activeNode.type !== "window" && (activeNode.type === "rectangle" || activeNode.type === "trapezoid") && (
+              <button
+                className="btn btn-sm btn-secondary"
+                style={{ width: "100%", justifyContent: "center", gap: "6px", marginTop: "6px" }}
+                onClick={() => commitImmediateField({ transformMode: activeNode.transformMode === "radial" ? "cartesian" : "radial" })}
+                title={activeNode.transformMode === "radial"
+                  ? "Remove Radial Warp — converts this arc-slice shape back to a flat Cartesian rectangle/trapezoid"
+                  : "Apply Radial Warp — deforms this shape into an arc-slice conforming to disc geometry"}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <path d="M3 20 Q12 2 21 20" />
+                  <path d="M6 16 Q12 7 18 16" />
+                </svg>
+                {activeNode.transformMode === "radial" ? "Remove Radial Warp" : "Apply Radial Warp"}
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Symmetrical Array Grouping Card */}
+        {activeNode.symmetryGroupId && (
+          <div className="info-card" style={{ marginTop: "10px", padding: "10px", backgroundColor: "rgba(59, 130, 246, 0.08)", borderRadius: "8px", border: "1px solid rgba(59, 130, 246, 0.3)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+              <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#60a5fa", fontWeight: "600", display: "flex", alignItems: "center", gap: "5px" }}>
+                <Compass size={13} /> Symmetrical Array ({activeNode.symmetryCount || 2}x)
+              </span>
+              <label style={{ fontSize: "11px", display: "flex", alignItems: "center", gap: "4px", cursor: "pointer", margin: 0, color: "#cbd5e1" }}>
+                <input
+                  type="checkbox"
+                  checked={linkSymmetry}
+                  onChange={(e) => setLinkSymmetry(e.target.checked)}
+                />
+                Global Link
+              </label>
+            </div>
+
+            {/* Per-Object Decoupling Control */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", backgroundColor: "rgba(0, 0, 0, 0.25)", padding: "6px 8px", borderRadius: "6px", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+              <span style={{ fontSize: "11px", color: "#e2e8f0" }}>
+                This Object {activeNode.symmetryIndex !== undefined ? `(#${activeNode.symmetryIndex + 1})` : ""}:
+              </span>
+              <button
+                className="btn btn-sm"
+                onClick={handleToggleNodeSymmetryLink}
+                style={{
+                  fontSize: "11px",
+                  padding: "3px 8px",
+                  backgroundColor: activeNode.symmetryUnlinked ? "#334155" : "#2563eb",
+                  color: "#ffffff",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                }}
+              >
+                {activeNode.symmetryUnlinked ? <Unlock size={12} /> : <Lock size={12} />}
+                {activeNode.symmetryUnlinked ? "Independent" : "Group Linked"}
+              </button>
+            </div>
+
+            {activeNode.symmetryOffsets && (activeNode.symmetryOffsets.radialDistanceOffset || activeNode.symmetryOffsets.angleOffset || activeNode.symmetryOffsets.rotationOffset) ? (
+              <div style={{ fontSize: "10px", color: "#94a3b8", marginBottom: "8px", fontStyle: "italic", paddingLeft: "2px" }}>
+                Offsets: {activeNode.symmetryOffsets.radialDistanceOffset ? `${activeNode.symmetryOffsets.radialDistanceOffset > 0 ? "+" : ""}${activeNode.symmetryOffsets.radialDistanceOffset}px radial ` : ""}{activeNode.symmetryOffsets.angleOffset ? `${activeNode.symmetryOffsets.angleOffset > 0 ? "+" : ""}${activeNode.symmetryOffsets.angleOffset}° angle ` : ""}{activeNode.symmetryOffsets.rotationOffset ? `${activeNode.symmetryOffsets.rotationOffset > 0 ? "+" : ""}${activeNode.symmetryOffsets.rotationOffset}° rot` : ""}
+              </div>
+            ) : null}
+
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleSelectAllSymmetryCopies}
+                style={{ flex: 1, justifyContent: "center", fontSize: "11px", padding: "4px 6px" }}
+              >
+                Select All ({activeNode.symmetryCount || 2})
+              </button>
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={handleUnlinkSymmetryGroup}
+                style={{ flex: 1, justifyContent: "center", fontSize: "11px", padding: "4px 6px", color: "#f87171", borderColor: "rgba(248, 113, 113, 0.4)" }}
+              >
+                Unlink Array
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Ring-Specific Properties */}
@@ -293,16 +704,132 @@ export const InspectorPanel: React.FC = () => {
               />
             </div>
           </div>
+          <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
+            <div>
+              <label>Ring Shape</label>
+              <select
+                value={activeNode.ringShape || "circle"}
+                onChange={(e) => {
+                  const shapeVal = e.target.value as "circle" | "polygon";
+                  const updates: any = { ringShape: shapeVal };
+                  if (shapeVal === "polygon" && !activeNode.polygonSides) {
+                    updates.polygonSides = 6;
+                    updates.radialSlices = 6;
+                  }
+                  executeCommand(new UpdateNodeCommand(activeNode.id, activeNode, { ...activeNode, ...updates }));
+                }}
+              >
+                <option value="circle">Circle (Round Disc)</option>
+                <option value="polygon">Regular Polygon</option>
+              </select>
+            </div>
+            {activeNode.ringShape === "polygon" && (
+              <div>
+                <label>Polygon Sides</label>
+                <input
+                  type="number"
+                  min="3"
+                  max="360"
+                  value={activeNode.polygonSides || 6}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => handleTransientEdit({ polygonSides: Math.max(3, Math.min(360, parseInt(e.target.value) || 3)) })}
+                  onBlur={(e) => handleCommitEdit({ polygonSides: Math.max(3, Math.min(360, parseInt(e.target.value) || 3)) })}
+                />
+              </div>
+            )}
+          </div>
+          {activeNode.ringShape === "polygon" && (
+            <div className="info-card" style={{ marginTop: "10px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label style={{ margin: 0 }}>Edge Curvature</label>
+                <span style={{ fontSize: "11px", color: (activeNode.edgeCurvature || 0) < 0 ? "#ec4899" : (activeNode.edgeCurvature || 0) > 0 ? "#10b981" : "#94a3b8", fontWeight: 700 }}>
+                  {(activeNode.edgeCurvature || 0) === 0 ? "Flat (Straight)" : (activeNode.edgeCurvature || 0) < 0 ? `Concave (${Math.round((activeNode.edgeCurvature || 0) * 100)}%)` : `Convex (+${Math.round((activeNode.edgeCurvature || 0) * 100)}%)`}
+                </span>
+              </div>
+              <input
+                type="range"
+                min="-1"
+                max="1"
+                step="0.05"
+                value={activeNode.edgeCurvature || 0}
+                onMouseDown={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ edgeCurvature: parseFloat(e.target.value) })}
+                onMouseUp={(e) => handleCommitEdit({ edgeCurvature: parseFloat((e.target as HTMLInputElement).value) })}
+              />
+            </div>
+          )}
           <div className="info-card" style={{ marginTop: "10px" }}>
-            <label>Rotation angle: {Math.round(activeNode.rotation)}°</label>
+            <label>Radial Slice Grid ({activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4)} Slices)</label>
+            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
+              <input
+                type="number"
+                min="2"
+                max="360"
+                value={activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4)}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ radialSlices: Math.max(2, Math.min(360, parseInt(e.target.value) || 2)) })}
+                onBlur={(e) => handleCommitEdit({ radialSlices: Math.max(2, Math.min(360, parseInt(e.target.value) || 2)) })}
+              />
+              <span style={{ fontSize: "11px", color: "#94a3b8", whiteSpace: "nowrap" }}>
+                ({(360 / (activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4))).toFixed(2)}° steps)
+              </span>
+            </div>
+          </div>
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <label style={{ margin: 0 }}>Rotation Angle</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                <input
+                  type="number"
+                  id="ring-rotation-number-input"
+                  step="any"
+                  min="0"
+                  max="360"
+                  style={{
+                    width: "65px",
+                    padding: "2px 6px",
+                    fontSize: "12px",
+                    textAlign: "right",
+                    backgroundColor: "#0b0c0f",
+                    border: "1px solid #232530",
+                    borderRadius: "4px",
+                    color: "#f8fafc",
+                  }}
+                  value={localValState.ringRotation !== undefined ? localValState.ringRotation : (activeNode.rotation || 0)}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    const val = raw === "" ? 0 : parseFloat(raw);
+                    setLocalValState((s) => ({ ...s, ringRotation: raw }));
+                    handleTransientEdit({ rotation: isNaN(val) ? 0 : val });
+                  }}
+                  onBlur={(e) => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setLocalValState((s) => ({ ...s, ringRotation: val }));
+                    handleCommitEdit({ rotation: val });
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.currentTarget.blur();
+                    }
+                  }}
+                />
+                <span style={{ fontSize: "12px", color: "#94a3b8" }}>°</span>
+              </div>
+            </div>
             <input
               type="range"
               id="ring-rotation-slider"
               min="0"
               max="360"
+              step="1"
               value={activeNode.rotation || 0}
               onMouseDown={handleStartEdit}
-              onChange={(e) => handleTransientEdit({ rotation: parseFloat(e.target.value) })}
+              onChange={(e) => {
+                const val = parseFloat(e.target.value);
+                setLocalValState((s) => ({ ...s, ringRotation: val }));
+                handleTransientEdit({ rotation: val });
+              }}
               onMouseUp={(e) => handleCommitEdit({ rotation: parseFloat((e.target as HTMLInputElement).value) })}
             />
           </div>
@@ -421,6 +948,7 @@ export const InspectorPanel: React.FC = () => {
               />
             </div>
           </div>
+
         </div>
       )}
 
@@ -508,13 +1036,187 @@ export const InspectorPanel: React.FC = () => {
                 type="number"
                 id="polygon-sides"
                 min="3"
-                max="20"
+                max="360"
                 value={activeNode.sides || 5}
                 onFocus={handleStartEdit}
                 onChange={(e) => handleTransientEdit({ sides: Math.max(3, parseInt(e.target.value) || 3) })}
                 onBlur={(e) => handleCommitEdit({ sides: Math.max(3, parseInt(e.target.value) || 3) })}
               />
             </div>
+          </div>
+          {(activeNode.sides || 5) === 3 && (
+            <div className="info-card" style={{ marginTop: "10px" }}>
+              <label>Triangle Variant</label>
+              <select
+                value={activeNode.triangleType || "equilateral"}
+                onChange={(e) => commitImmediateField({ triangleType: e.target.value })}
+                style={{
+                  backgroundColor: "#0b0c0f",
+                  border: "1px solid #232530",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  padding: "6px",
+                  fontSize: "13px",
+                  width: "100%",
+                  marginTop: "4px",
+                }}
+              >
+                <option value="equilateral">Equilateral (3 Equal Sides)</option>
+                <option value="isosceles">Isosceles (2 Equal Sides)</option>
+                <option value="right">Right Triangle (90° Corner)</option>
+              </select>
+            </div>
+          )}
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+              <label style={{ margin: 0 }}>Edge Curvature</label>
+              <span style={{ fontSize: "11px", color: (activeNode.edgeCurvature || 0) < 0 ? "#ec4899" : (activeNode.edgeCurvature || 0) > 0 ? "#10b981" : "#94a3b8", fontWeight: 700 }}>
+                {(activeNode.edgeCurvature || 0) === 0 ? "Flat (Straight)" : (activeNode.edgeCurvature || 0) < 0 ? `Concave (${Math.round((activeNode.edgeCurvature || 0) * 100)}%)` : `Convex (+${Math.round((activeNode.edgeCurvature || 0) * 100)}%)`}
+              </span>
+            </div>
+            <input
+              type="range"
+              min="-1"
+              max="1"
+              step="0.05"
+              value={activeNode.edgeCurvature || 0}
+              onMouseDown={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ edgeCurvature: parseFloat(e.target.value) })}
+              onMouseUp={(e) => handleCommitEdit({ edgeCurvature: parseFloat((e.target as HTMLInputElement).value) })}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Trapezoid Shape parameters */}
+      {activeNode.type === "trapezoid" && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Sliders size={14} />
+            Trapezoid Dimensions
+          </h3>
+          <div className="info-card control-double-row">
+            <div>
+              <label>Base Width</label>
+              <input
+                type="number"
+                id="trapezoid-basewidth"
+                min="1"
+                value={activeNode.baseWidth || 10}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ baseWidth: Math.max(1, parseInt(e.target.value) || 1) })}
+                onBlur={(e) => handleCommitEdit({ baseWidth: Math.max(1, parseInt(e.target.value) || 1) })}
+              />
+            </div>
+            <div>
+              <label>Top Width</label>
+              <input
+                type="number"
+                id="trapezoid-topwidth"
+                min="1"
+                value={activeNode.topWidth || 10}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ topWidth: Math.max(1, parseInt(e.target.value) || 1) })}
+                onBlur={(e) => handleCommitEdit({ topWidth: Math.max(1, parseInt(e.target.value) || 1) })}
+              />
+            </div>
+          </div>
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <label>Height</label>
+            <input
+              type="number"
+              id="trapezoid-height"
+              min="1"
+              value={activeNode.height || 10}
+              onFocus={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ height: Math.max(1, parseInt(e.target.value) || 1) })}
+              onBlur={(e) => handleCommitEdit({ height: Math.max(1, parseInt(e.target.value) || 1) })}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Crescent Moon Shape parameters */}
+      {activeNode.type === "crescent" && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Sliders size={14} />
+            Crescent Parameters
+          </h3>
+          <div className="info-card">
+            <label>Outer Radius</label>
+            <input
+              type="number"
+              id="crescent-radius"
+              min="1"
+              value={activeNode.radius || 10}
+              onFocus={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
+              onBlur={(e) => handleCommitEdit({ radius: Math.max(1, parseInt(e.target.value) || 1) })}
+            />
+          </div>
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <label>Phase (-1 to 1): {(activeNode.phase !== undefined ? activeNode.phase : 0.5).toFixed(2)}</label>
+            <input
+              type="range"
+              id="crescent-phase"
+              min="-1"
+              max="1"
+              step="0.05"
+              value={activeNode.phase !== undefined ? activeNode.phase : 0.5}
+              onMouseDown={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ phase: parseFloat(e.target.value) })}
+              onMouseUp={(e) => handleCommitEdit({ phase: parseFloat((e.target as HTMLInputElement).value) })}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Star Shape parameters */}
+      {activeNode.type === "star" && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Sliders size={14} />
+            Star Parameters
+          </h3>
+          <div className="info-card control-double-row">
+            <div>
+              <label>Outer Radius</label>
+              <input
+                type="number"
+                id="star-outer-radius"
+                min="1"
+                value={activeNode.outerRadius || 35}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ outerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
+                onBlur={(e) => handleCommitEdit({ outerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
+              />
+            </div>
+            <div>
+              <label>Inner Radius</label>
+              <input
+                type="number"
+                id="star-inner-radius"
+                min="1"
+                value={activeNode.innerRadius || 15}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ innerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
+                onBlur={(e) => handleCommitEdit({ innerRadius: Math.max(1, parseInt(e.target.value) || 1) })}
+              />
+            </div>
+          </div>
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <label>Points Count</label>
+            <input
+              type="number"
+              id="star-points"
+              min="3"
+              max="30"
+              value={activeNode.numPoints || 5}
+              onFocus={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ numPoints: Math.max(3, parseInt(e.target.value) || 3) })}
+              onBlur={(e) => handleCommitEdit({ numPoints: Math.max(3, parseInt(e.target.value) || 3) })}
+            />
           </div>
         </div>
       )}
@@ -555,6 +1257,104 @@ export const InspectorPanel: React.FC = () => {
         </div>
       )}
 
+      {/* Curve parameters */}
+      {(activeNode.type === "curve" || (activeNode.type === "window" && activeNode.shape?.type === "curve")) && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Sliders size={14} />
+            Bézier Curve Parameters
+          </h3>
+          <div className="info-card" style={{ marginBottom: "8px" }}>
+            <label>Curve Presets</label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px", marginTop: "4px" }}>
+              <button
+                onClick={() => {
+                  commitImmediateField(
+                    activeNode.type === "window"
+                      ? { shape: { ...activeNode.shape, controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 33, y: 0 }, c2: { x: 66, y: 0 }, p1: { x: 100, y: 0 } } } }
+                      : { controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 33, y: 0 }, c2: { x: 66, y: 0 }, p1: { x: 100, y: 0 } } }
+                  );
+                }}
+                style={{ background: "#1e293b", color: "#cbd5e1", border: "1px solid #334155", borderRadius: "6px", padding: "4px", fontSize: "11px", cursor: "pointer" }}
+              >
+                Straight
+              </button>
+              <button
+                onClick={() => {
+                  commitImmediateField(
+                    activeNode.type === "window"
+                      ? { shape: { ...activeNode.shape, controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 25, y: -50 }, c2: { x: 75, y: -50 }, p1: { x: 100, y: 0 } } } }
+                      : { controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 25, y: -50 }, c2: { x: 75, y: -50 }, p1: { x: 100, y: 0 } } }
+                  );
+                }}
+                style={{ background: "#1e293b", color: "#cbd5e1", border: "1px solid #334155", borderRadius: "6px", padding: "4px", fontSize: "11px", cursor: "pointer" }}
+              >
+                Arc (Smooth)
+              </button>
+              <button
+                onClick={() => {
+                  commitImmediateField(
+                    activeNode.type === "window"
+                      ? { shape: { ...activeNode.shape, controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 25, y: -50 }, c2: { x: 75, y: 50 }, p1: { x: 100, y: 0 } } } }
+                      : { controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 25, y: -50 }, c2: { x: 75, y: 50 }, p1: { x: 100, y: 0 } } }
+                  );
+                }}
+                style={{ background: "#1e293b", color: "#cbd5e1", border: "1px solid #334155", borderRadius: "6px", padding: "4px", fontSize: "11px", cursor: "pointer" }}
+              >
+                S-Curve
+              </button>
+              <button
+                onClick={() => {
+                  commitImmediateField(
+                    activeNode.type === "window"
+                      ? { shape: { ...activeNode.shape, controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 30, y: -80 }, c2: { x: 70, y: -80 }, p1: { x: 100, y: 0 } } } }
+                      : { controlPoints: { p0: { x: 0, y: 0 }, c1: { x: 30, y: -80 }, c2: { x: 70, y: -80 }, p1: { x: 100, y: 0 } } }
+                  );
+                }}
+                style={{ background: "#1e293b", color: "#cbd5e1", border: "1px solid #334155", borderRadius: "6px", padding: "4px", fontSize: "11px", cursor: "pointer" }}
+              >
+                Deep Arch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Arc parameters */}
+      {(activeNode.type === "arc" || (activeNode.type === "window" && activeNode.shape?.type === "arc")) && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Sliders size={14} />
+            Circular Arc Dimensions
+          </h3>
+          <div className="info-card control-double-row">
+            <div>
+              <label>Radius</label>
+              <input
+                type="number"
+                min="5"
+                value={(activeNode.type === "window" ? activeNode.shape?.radius : activeNode.radius) || 50}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit(activeNode.type === "window" ? { shape: { ...activeNode.shape, radius: Math.max(5, parseInt(e.target.value) || 5) } } : { radius: Math.max(5, parseInt(e.target.value) || 5) })}
+                onBlur={(e) => handleCommitEdit(activeNode.type === "window" ? { shape: { ...activeNode.shape, radius: Math.max(5, parseInt(e.target.value) || 5) } } : { radius: Math.max(5, parseInt(e.target.value) || 5) })}
+              />
+            </div>
+            <div>
+              <label>Sweep Angle</label>
+              <input
+                type="number"
+                min="1"
+                max="360"
+                value={(activeNode.type === "window" ? activeNode.shape?.sweepAngle : activeNode.sweepAngle) || 90}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit(activeNode.type === "window" ? { shape: { ...activeNode.shape, sweepAngle: parseInt(e.target.value) || 90 } } : { sweepAngle: parseInt(e.target.value) || 90 })}
+                onBlur={(e) => handleCommitEdit(activeNode.type === "window" ? { shape: { ...activeNode.shape, sweepAngle: parseInt(e.target.value) || 90 } } : { sweepAngle: parseInt(e.target.value) || 90 })}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Window-Specific Cutout Properties */}
       {activeNode.type === "window" && activeNode.shape && (
         <div className="sidebar-section">
@@ -569,7 +1369,7 @@ export const InspectorPanel: React.FC = () => {
               value={activeNode.shape.type}
               onChange={(e) => {
                 const newType = e.target.value;
-                const newShape: any = { type: newType };
+                let newShape: any = { type: newType, id: `${activeNode.id}-shape` };
                 if (newType === "circle") {
                   newShape.radius = 30;
                 } else if (newType === "rectangle") {
@@ -578,8 +1378,36 @@ export const InspectorPanel: React.FC = () => {
                 } else if (newType === "polygon") {
                   newShape.radius = 30;
                   newShape.sides = 5;
+                } else if (newType === "star") {
+                  newShape.outerRadius = 35;
+                  newShape.innerRadius = 15;
+                  newShape.numPoints = 5;
+                } else if (newType === "trapezoid") {
+                  newShape.baseWidth = 60;
+                  newShape.topWidth = 40;
+                  newShape.height = 50;
+                } else if (newType === "crescent") {
+                  newShape.radius = 30;
+                  newShape.ratio = 0.4;
+                  newShape.phase = 0.5;
+                } else if (newType === "line") {
+                  newShape.length = 60;
+                  newShape.thickness = 4;
+                } else if (newType === "text") {
+                  newShape.content = "Cutout";
+                  newShape.fontSize = 16;
+                  newShape.fontFamily = "Outfit";
+                  newShape.style = { fill: "transparent" };
+                } else if (newType === "arcText") {
+                  newShape.content = "Cutout Arc";
+                  newShape.radius = 60;
+                  newShape.startAngle = -20;
+                  newShape.sweepAngle = 40;
+                  newShape.fontSize = 16;
+                  newShape.fontFamily = "Outfit";
+                  newShape.style = { fill: "transparent" };
                 }
-                commitImmediateField({ shape: newShape });
+                commitImmediateField({ shape: newShape, savedSolidType: newType });
               }}
               style={{
                 backgroundColor: "#0b0c0f",
@@ -588,11 +1416,19 @@ export const InspectorPanel: React.FC = () => {
                 color: "#f8fafc",
                 padding: "6px",
                 fontSize: "13px",
+                width: "100%",
+                marginTop: "4px",
               }}
             >
               <option value="circle">Circle</option>
               <option value="rectangle">Rectangle</option>
               <option value="polygon">Polygon</option>
+              <option value="star">Star</option>
+              <option value="trapezoid">Trapezoid</option>
+              <option value="crescent">Crescent Moon</option>
+              <option value="line">Line</option>
+              <option value="text">Text Glyph</option>
+              <option value="arcText">Arc Text</option>
             </select>
           </div>
 
@@ -669,6 +1505,78 @@ export const InspectorPanel: React.FC = () => {
               </div>
             </div>
           )}
+
+          {activeNode.shape.type === "star" && (
+            <div className="info-card control-double-row">
+              <div>
+                <label>Outer Radius</label>
+                <input
+                  type="number"
+                  id="window-star-outer-radius"
+                  min="1"
+                  value={activeNode.shape.outerRadius || 35}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => handleTransientEdit({ shape: { outerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { outerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                />
+              </div>
+              <div>
+                <label>Inner Radius</label>
+                <input
+                  type="number"
+                  id="window-star-inner-radius"
+                  min="1"
+                  value={activeNode.shape.innerRadius || 15}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => handleTransientEdit({ shape: { innerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { innerRadius: Math.max(1, parseInt(e.target.value) || 1) } })}
+                />
+              </div>
+            </div>
+          )}
+
+          {activeNode.shape.type === "trapezoid" && (
+            <div className="info-card control-double-row">
+              <div>
+                <label>Base Width</label>
+                <input
+                  type="number"
+                  id="window-trap-basewidth"
+                  min="1"
+                  value={activeNode.shape.baseWidth || 60}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => handleTransientEdit({ shape: { baseWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { baseWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
+                />
+              </div>
+              <div>
+                <label>Top Width</label>
+                <input
+                  type="number"
+                  id="window-trap-topwidth"
+                  min="1"
+                  value={activeNode.shape.topWidth || 40}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => handleTransientEdit({ shape: { topWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
+                  onBlur={(e) => handleCommitEdit({ shape: { topWidth: Math.max(1, parseInt(e.target.value) || 1) } })}
+                />
+              </div>
+            </div>
+          )}
+
+          {(activeNode.shape.type === "text" || activeNode.shape.type === "arcText") && (
+            <div className="info-card">
+              <label>Text Content</label>
+              <input
+                type="text"
+                id="window-text-content"
+                value={activeNode.shape.content || ""}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ shape: { content: e.target.value } })}
+                onBlur={(e) => handleCommitEdit({ shape: { content: e.target.value } })}
+              />
+            </div>
+          )}
         </div>
       )}
 
@@ -725,13 +1633,84 @@ export const InspectorPanel: React.FC = () => {
               >
                 <option value="Outfit">Outfit</option>
                 <option value="Inter">Inter</option>
+                <option value="Montserrat">Montserrat</option>
+                <option value="Playfair Display">Playfair Display</option>
+                <option value="Cinzel">Cinzel</option>
+                <option value="Pacifico">Pacifico</option>
+                <option value="Courier Prime">Courier Prime</option>
                 <option value="serif">Serif</option>
                 <option value="monospace">Monospace</option>
               </select>
             </div>
           </div>
 
-          {/* Curved Arc Text Radius/Angles */}
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <label>Formatting</label>
+            <div style={{ display: "flex", gap: "6px", marginTop: "4px" }}>
+              <button
+                className={`formatting-btn ${activeNode.bold ? "active" : ""}`}
+                onClick={() => commitImmediateField({ bold: !activeNode.bold })}
+                title="Bold"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "4px",
+                  backgroundColor: activeNode.bold ? "#312e81" : "#0b0c0f",
+                  border: activeNode.bold ? "1px solid #6366f1" : "1px solid #232530",
+                  color: activeNode.bold ? "#a5b4fc" : "#94a3b8",
+                  cursor: "pointer",
+                }}
+              >
+                <Bold size={14} />
+              </button>
+              <button
+                className={`formatting-btn ${activeNode.italic ? "active" : ""}`}
+                onClick={() => commitImmediateField({ italic: !activeNode.italic })}
+                title="Italic"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "4px",
+                  backgroundColor: activeNode.italic ? "#312e81" : "#0b0c0f",
+                  border: activeNode.italic ? "1px solid #6366f1" : "1px solid #232530",
+                  color: activeNode.italic ? "#a5b4fc" : "#94a3b8",
+                  cursor: "pointer",
+                }}
+              >
+                <Italic size={14} />
+              </button>
+              <button
+                className={`formatting-btn ${activeNode.underline ? "active" : ""}`}
+                onClick={() => commitImmediateField({ underline: !activeNode.underline })}
+                title="Underline"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "4px",
+                  backgroundColor: activeNode.underline ? "#312e81" : "#0b0c0f",
+                  border: activeNode.underline ? "1px solid #6366f1" : "1px solid #232530",
+                  color: activeNode.underline ? "#a5b4fc" : "#94a3b8",
+                  cursor: "pointer",
+                }}
+              >
+                <Underline size={14} />
+              </button>
+              <button
+                className={`formatting-btn ${activeNode.strikethrough ? "active" : ""}`}
+                onClick={() => commitImmediateField({ strikethrough: !activeNode.strikethrough })}
+                title="Strikethrough"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: "4px",
+                  backgroundColor: activeNode.strikethrough ? "#312e81" : "#0b0c0f",
+                  border: activeNode.strikethrough ? "1px solid #6366f1" : "1px solid #232530",
+                  color: activeNode.strikethrough ? "#a5b4fc" : "#94a3b8",
+                  cursor: "pointer",
+                }}
+              >
+                <Strikethrough size={14} />
+              </button>
+            </div>
+          </div>
+
+          {/* Curved Arc Text Radius/Angles & Kerning */}
           {activeNode.type === "arcText" && (
             <>
               <div className="info-card" style={{ marginTop: "10px" }}>
@@ -746,6 +1725,40 @@ export const InspectorPanel: React.FC = () => {
                   onChange={(e) => handleTransientEdit({ radius: parseInt(e.target.value) })}
                   onMouseUp={(e) => handleCommitEdit({ radius: parseInt((e.target as HTMLInputElement).value) })}
                 />
+              </div>
+              <div className="info-card" style={{ marginTop: "10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                  <label htmlFor="text-kerning-slider">Kerning (Letter Spacing)</label>
+                  <span style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>
+                    {activeNode.kerning || 0}px
+                  </span>
+                </div>
+                <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                  <input
+                    type="range"
+                    id="text-kerning-slider"
+                    min="-10"
+                    max="50"
+                    step="0.5"
+                    value={activeNode.kerning || 0}
+                    onMouseDown={handleStartEdit}
+                    onChange={(e) => handleTransientEdit({ kerning: parseFloat(e.target.value) || 0 })}
+                    onMouseUp={(e) => handleCommitEdit({ kerning: parseFloat((e.target as HTMLInputElement).value) || 0 })}
+                    style={{ flex: 1 }}
+                  />
+                  <input
+                    type="number"
+                    id="text-kerning-input"
+                    min="-10"
+                    max="50"
+                    step="0.5"
+                    value={activeNode.kerning || 0}
+                    onFocus={handleStartEdit}
+                    onChange={(e) => handleTransientEdit({ kerning: parseFloat(e.target.value) || 0 })}
+                    onBlur={(e) => handleCommitEdit({ kerning: parseFloat(e.target.value) || 0 })}
+                    style={{ width: "60px" }}
+                  />
+                </div>
               </div>
               <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
                 <div>
@@ -781,36 +1794,114 @@ export const InspectorPanel: React.FC = () => {
         <div className="sidebar-section">
           <h3 className="section-title">
             <Palette size={14} />
-            Aesthetic Styles
+            {activeNode.type === "ring" ? "Ring Style" : "Aesthetic Styles"}
           </h3>
           <div className="info-card control-double-row">
             <div>
               <label>Fill Color</label>
-              <input
-                type="color"
-                id="style-fill-color"
-                value={localValState.fill || "#000000"}
-                onFocus={handleStartEdit}
-                onChange={(e) => {
-                  setLocalValState((s) => ({ ...s, fill: e.target.value }));
-                  handleTransientEdit({ style: { fill: e.target.value } });
-                }}
-                onBlur={(e) => handleCommitEdit({ style: { fill: e.target.value } })}
-              />
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                <input
+                  type="color"
+                  id="style-fill-color"
+                  value={localValState.fill || "#000000"}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => {
+                    setLocalValState((s) => ({ ...s, fill: e.target.value }));
+                    handleTransientEdit({ style: { fill: e.target.value } });
+                  }}
+                  onBlur={(e) => handleCommitEdit({ style: { fill: e.target.value } })}
+                  style={{ width: "32px", height: "32px", padding: 0, border: "none", borderRadius: "4px", cursor: "pointer", background: "none" }}
+                />
+                <input
+                  type="text"
+                  id="style-fill-color-hex"
+                  value={localValState.fill || "#000000"}
+                  placeholder="#000000"
+                  onFocus={handleStartEdit}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setLocalValState((s) => ({ ...s, fill: val }));
+                    if (/^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+                      handleTransientEdit({ style: { fill: val } });
+                    }
+                  }}
+                  onBlur={(e) => {
+                    let val = e.target.value.trim();
+                    if (val && !val.startsWith("#")) val = `#${val}`;
+                    if (/^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+                      setLocalValState((s) => ({ ...s, fill: val }));
+                      handleCommitEdit({ style: { fill: val } });
+                    } else {
+                      setLocalValState((s) => ({ ...s, fill: activeNode.style?.fill || "#000000" }));
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    textTransform: "uppercase",
+                    padding: "4px 6px",
+                    backgroundColor: "#0b0c0f",
+                    border: "1px solid #232530",
+                    borderRadius: "4px",
+                    color: "#f8fafc",
+                    width: "100%",
+                  }}
+                />
+              </div>
             </div>
             <div>
               <label>Stroke Color</label>
-              <input
-                type="color"
-                id="style-stroke-color"
-                value={localValState.stroke || "#000000"}
-                onFocus={handleStartEdit}
-                onChange={(e) => {
-                  setLocalValState((s) => ({ ...s, stroke: e.target.value }));
-                  handleTransientEdit({ style: { stroke: e.target.value } });
-                }}
-                onBlur={(e) => handleCommitEdit({ style: { stroke: e.target.value } })}
-              />
+              <div style={{ display: "flex", alignItems: "center", gap: "6px", marginTop: "4px" }}>
+                <input
+                  type="color"
+                  id="style-stroke-color"
+                  value={localValState.stroke || "#000000"}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => {
+                    setLocalValState((s) => ({ ...s, stroke: e.target.value }));
+                    handleTransientEdit({ style: { stroke: e.target.value } });
+                  }}
+                  onBlur={(e) => handleCommitEdit({ style: { stroke: e.target.value } })}
+                  style={{ width: "32px", height: "32px", padding: 0, border: "none", borderRadius: "4px", cursor: "pointer", background: "none" }}
+                />
+                <input
+                  type="text"
+                  id="style-stroke-color-hex"
+                  value={localValState.stroke || "#000000"}
+                  placeholder="#000000"
+                  onFocus={handleStartEdit}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setLocalValState((s) => ({ ...s, stroke: val }));
+                    if (/^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+                      handleTransientEdit({ style: { stroke: val } });
+                    }
+                  }}
+                  onBlur={(e) => {
+                    let val = e.target.value.trim();
+                    if (val && !val.startsWith("#")) val = `#${val}`;
+                    if (/^#([0-9A-F]{3}){1,2}$/i.test(val)) {
+                      setLocalValState((s) => ({ ...s, stroke: val }));
+                      handleCommitEdit({ style: { stroke: val } });
+                    } else {
+                      setLocalValState((s) => ({ ...s, stroke: activeNode.style?.stroke || "#000000" }));
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    fontFamily: "monospace",
+                    fontSize: "12px",
+                    textTransform: "uppercase",
+                    padding: "4px 6px",
+                    backgroundColor: "#0b0c0f",
+                    border: "1px solid #232530",
+                    borderRadius: "4px",
+                    color: "#f8fafc",
+                    width: "100%",
+                  }}
+                />
+              </div>
             </div>
           </div>
           <div className="info-card" style={{ marginTop: "10px" }}>
@@ -829,6 +1920,208 @@ export const InspectorPanel: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Grab Tab Style (Collapsible, Ring only, below Ring Style) */}
+      {activeNode.type === "ring" && (
+        <div className="sidebar-section">
+          <h3
+            className="section-title"
+            style={{ cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+            onClick={() => setIsGrabTabExpanded(!isGrabTabExpanded)}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <Sliders size={14} />
+              Grab Tab Style
+            </span>
+            {isGrabTabExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+          </h3>
+          
+          {isGrabTabExpanded && (
+            <>
+              <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
+                <div>
+                  <label>Tab Width</label>
+                  <input
+                    type="number"
+                    id="ring-tab-width"
+                    min="5"
+                    max="150"
+                    value={activeNode.tabWidth ?? 30}
+                    onFocus={handleStartEdit}
+                    onChange={(e) => handleTransientEdit({ tabWidth: Math.max(5, parseInt(e.target.value) || 30) })}
+                    onBlur={(e) => handleCommitEdit({ tabWidth: Math.max(5, parseInt(e.target.value) || 30) })}
+                  />
+                </div>
+                <div>
+                  <label>Tab Height</label>
+                  <input
+                    type="number"
+                    id="ring-tab-height"
+                    min="5"
+                    max="150"
+                    value={activeNode.tabHeight ?? 20}
+                    onFocus={handleStartEdit}
+                    onChange={(e) => handleTransientEdit({ tabHeight: Math.max(5, parseInt(e.target.value) || 20) })}
+                    onBlur={(e) => handleCommitEdit({ tabHeight: Math.max(5, parseInt(e.target.value) || 20) })}
+                  />
+                </div>
+              </div>
+
+              <div className="info-card" style={{ marginTop: "10px" }}>
+                <label>Tab Shape Style</label>
+                <select
+                  id="ring-tab-shape-select"
+                  value={activeNode.tabShape || "semicircular"}
+                  onChange={(e) => commitImmediateField({ tabShape: e.target.value })}
+                  style={{
+                    backgroundColor: "#0b0c0f",
+                    border: "1px solid #232530",
+                    borderRadius: "6px",
+                    color: "#f8fafc",
+                    padding: "6px",
+                    fontSize: "13px",
+                    width: "100%",
+                    marginTop: "4px",
+                  }}
+                >
+                  <option value="rectangular">Rectangular</option>
+                  <option value="semicircular">Semicircular</option>
+                  <option value="trapezoidal">Trapezoidal</option>
+                </select>
+              </div>
+
+              <div className="info-card" style={{ marginTop: "10px" }}>
+                <label>Tab Custom Label</label>
+                <input
+                  type="text"
+                  id="ring-tab-label-input"
+                  placeholder="Default (#index)"
+                  value={localValState.tabLabel ?? activeNode.tabLabel ?? ""}
+                  onFocus={handleStartEdit}
+                  onChange={(e) => {
+                    setLocalValState((s) => ({ ...s, tabLabel: e.target.value }));
+                    handleTransientEdit({ tabLabel: e.target.value });
+                  }}
+                  onBlur={(e) => handleCommitEdit({ tabLabel: e.target.value })}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Canvas Grid & Drafting Guides */}
+      <div className="sidebar-section">
+        <h3 className="section-title">
+          <Compass size={14} />
+          Canvas Grid & Guides
+        </h3>
+        <div className="info-card" style={{ marginTop: "8px" }}>
+          <label>Grid Layer Position</label>
+          <select
+            value={useViewStore.getState().gridLayer}
+            onChange={(e) => useViewStore.getState().setGridLayer(e.target.value as any)}
+            style={{
+              backgroundColor: "#0b0c0f",
+              border: "1px solid #232530",
+              borderRadius: "6px",
+              color: "#f8fafc",
+              padding: "6px",
+              fontSize: "12px",
+              width: "100%",
+              marginTop: "4px",
+            }}
+          >
+            <option value="off">Off (Disabled)</option>
+            <option value="background">Grid BG (Behind Paper Discs)</option>
+            <option value="foreground">Grid FG (In Front of Artwork)</option>
+          </select>
+        </div>
+
+        {useViewStore.getState().gridLayer !== "off" && (
+          <>
+            <div className="info-card" style={{ marginTop: "8px" }}>
+              <label>Grid Alignment Mode</label>
+              <select
+                value={useViewStore.getState().gridMode}
+                onChange={(e) => useViewStore.getState().setGridMode(e.target.value as any)}
+                style={{
+                  backgroundColor: "#0b0c0f",
+                  border: "1px solid #232530",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  padding: "6px",
+                  fontSize: "12px",
+                  width: "100%",
+                  marginTop: "4px",
+                }}
+              >
+                <option value="auto-symmetry">Auto-Symmetry (Active Ring)</option>
+                <option value="manual">Manual Slice Count</option>
+              </select>
+            </div>
+
+            <div className="info-card" style={{ marginTop: "8px" }}>
+              <label>Grid Line Color Theme</label>
+              <select
+                value={useViewStore.getState().gridLineColorMode}
+                onChange={(e) => useViewStore.getState().setGridLineColorMode(e.target.value as any)}
+                style={{
+                  backgroundColor: "#0b0c0f",
+                  border: "1px solid #232530",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  padding: "6px",
+                  fontSize: "12px",
+                  width: "100%",
+                  marginTop: "4px",
+                }}
+              >
+                <option value="auto">Auto (Dark in FG, Indigo in BG)</option>
+                <option value="dark">Dark Charcoal (#0F172A)</option>
+                <option value="light">Crisp Light Slate (#F8FAFC)</option>
+                <option value="indigo">Vibrant Indigo (#818CF8)</option>
+              </select>
+            </div>
+
+            {useViewStore.getState().gridMode === "manual" && (
+              <div className="info-card" style={{ marginTop: "8px" }}>
+                <label>Manual Slice Count (1 - 360)</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="360"
+                  value={useViewStore.getState().manualSliceCount}
+                  onChange={(e) => useViewStore.getState().setManualSliceCount(parseInt(e.target.value) || 1)}
+                />
+              </div>
+            )}
+
+            <div className="info-card control-double-row" style={{ marginTop: "8px" }}>
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "12px" }}>
+                  <input
+                    type="checkbox"
+                    checked={useViewStore.getState().showSliceGuides}
+                    onChange={() => useViewStore.getState().toggleSliceGuides()}
+                  />
+                  Radial Slices
+                </label>
+              </div>
+              <div>
+                <label style={{ display: "flex", alignItems: "center", gap: "6px", cursor: "pointer", fontSize: "12px" }}>
+                  <input
+                    type="checkbox"
+                    checked={useViewStore.getState().showCircularGuides}
+                    onChange={() => useViewStore.getState().toggleCircularGuides()}
+                  />
+                  Circular Rings
+                </label>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
     </aside>
   );
 };

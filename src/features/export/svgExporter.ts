@@ -1,5 +1,6 @@
 import type { Project, Asset } from "../../shared/types/project";
 import { resolveProject, type ResolvedNode } from "../runtime/mechanismEngine";
+import { getArcTextCharPositions } from "../../shared/utils/textGeometry";
 
 export interface SVGExportOptions {
   layer: "artwork" | "cut" | "fold" | "all";
@@ -19,10 +20,21 @@ function isNodeInLayer(node: ResolvedNode, layer: "artwork" | "cut" | "fold"): b
     // Windows are cut lines physically
     return layer === "cut";
   }
-  const exp = node.renderData.export;
+    const exp = node.renderData.export;
   if (!exp) return false;
   return exp[layer] === true;
 }
+
+const RING_COLORS = [
+  "#6366f1", // Indigo
+  "#10b981", // Emerald
+  "#ec4899", // Pink
+  "#f59e0b", // Amber
+  "#3b82f6", // Blue
+  "#8b5cf6", // Purple
+  "#ef4444", // Red
+  "#06b6d4", // Cyan
+];
 
 // Generates concentric hollow path description
 function getConcentricRingPath(innerRadius: number, outerRadius: number): string {
@@ -51,11 +63,60 @@ function getSectorPath(innerRadius: number, outerRadius: number, startAngle: num
 }
 
 // Generates polygon path description
-function getPolygonPath(sides: number, radius: number): string {
+export function getPolygonPath(sides: number, radius: number, edgeCurvature: number = 0, triangleType?: string): string {
+  const numSides = Math.max(3, sides || 6);
+  const vertices: { x: number; y: number }[] = [];
+
+  if (numSides === 3 && triangleType === "right") {
+    const k = radius * 0.85;
+    vertices.push({ x: -k, y: -k });
+    vertices.push({ x: k, y: k });
+    vertices.push({ x: -k, y: k });
+  } else if (numSides === 3 && triangleType === "isosceles") {
+    const h = radius;
+    const w = radius * 0.7;
+    vertices.push({ x: 0, y: -h });
+    vertices.push({ x: w, y: h * 0.8 });
+    vertices.push({ x: -w, y: h * 0.8 });
+  } else {
+    for (let i = 0; i < numSides; i++) {
+      const angle = (i * 2 * Math.PI) / numSides;
+      vertices.push({
+        x: radius * Math.cos(angle),
+        y: radius * Math.sin(angle),
+      });
+    }
+  }
+
+  if (Math.abs(edgeCurvature) < 0.001) {
+    const pts = vertices.map((v) => `${v.x},${v.y}`);
+    return `M ${pts.join(' L ')} Z`;
+  }
+
+  const sagitta = radius * 0.4 * edgeCurvature;
+  let d = `M ${vertices[0].x},${vertices[0].y}`;
+
+  for (let i = 0; i < numSides; i++) {
+    const v1 = vertices[i];
+    const v2 = vertices[(i + 1) % numSides];
+    const mx = (v1.x + v2.x) / 2;
+    const my = (v1.y + v2.y) / 2;
+    const len = Math.sqrt(mx * mx + my * my) || 1;
+    const cx = mx + sagitta * (mx / len);
+    const cy = my + sagitta * (my / len);
+    d += ` Q ${cx},${cy} ${v2.x},${v2.y}`;
+  }
+  return `${d} Z`;
+}
+
+// Generates star path description
+function getStarPath(numPoints: number, innerRadius: number, outerRadius: number): string {
   const pts = [];
-  for (let i = 0; i < sides; i++) {
-    const angle = (i * 2 * Math.PI) / sides;
-    pts.push(`${radius * Math.cos(angle)},${radius * Math.sin(angle)}`);
+  const totalPoints = numPoints * 2;
+  for (let i = 0; i < totalPoints; i++) {
+    const angle = (i * Math.PI) / numPoints - Math.PI / 2;
+    const r = i % 2 === 0 ? outerRadius : innerRadius;
+    pts.push(`${r * Math.cos(angle)},${r * Math.sin(angle)}`);
   }
   return `M ${pts.join(' L ')} Z`;
 }
@@ -95,17 +156,30 @@ function renderNodeToSVG(
 
   switch (node.type) {
     case "ring": {
+      const isPolygon = node.renderData.ringShape === "polygon";
+      const polySides = node.renderData.polygonSides || 6;
+      const curvature = node.renderData.edgeCurvature || 0;
+
       if (layer === "cut") {
-        // Cut outlines of inner & outer circles
-        let cuts = `<circle cx="0" cy="0" r="${outerRadius}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        let cuts = "";
+        if (isPolygon) {
+          cuts += `<path d="${getPolygonPath(polySides, outerRadius, curvature)}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        } else {
+          cuts += `<circle cx="0" cy="0" r="${outerRadius}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        }
         if (innerRadius > 0) {
           cuts += `\n  <circle cx="0" cy="0" r="${innerRadius}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
         }
         return cuts;
       } else {
-        // Artwork filled donut
-        const pathD = getConcentricRingPath(innerRadius || 0, outerRadius || 100);
-        return `<path d="${pathD}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" fill-rule="evenodd" />`;
+        if (isPolygon) {
+          const polyPath = getPolygonPath(polySides, outerRadius, curvature);
+          const innerHole = innerRadius > 0 ? ` M 0,${-innerRadius} A ${innerRadius},${innerRadius} 0 1,1 0,${innerRadius} A ${innerRadius},${innerRadius} 0 1,1 0,${-innerRadius}` : "";
+          return `<path d="${polyPath}${innerHole}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" fill-rule="evenodd" />`;
+        } else {
+          const pathD = getConcentricRingPath(innerRadius || 0, outerRadius || 100);
+          return `<path d="${pathD}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" fill-rule="evenodd" />`;
+        }
       }
     }
 
@@ -123,8 +197,29 @@ function renderNodeToSVG(
     case "line":
       return `<line x1="0" y1="0" x2="${length}" y2="0" ${transformAttr} stroke="${stroke}" stroke-width="${thickness || strokeWidth}" ${strokeDash ? `stroke-dasharray="${strokeDash}"` : ''} />`;
 
+    case "curve": {
+      const pts = node.renderData.controlPoints || { p0: { x: 0, y: 0 }, c1: { x: 50, y: -50 }, c2: { x: 100, y: 50 }, p1: { x: 150, y: 0 } };
+      const pathD = `M ${pts.p0.x} ${pts.p0.y} C ${pts.c1.x} ${pts.c1.y}, ${pts.c2.x} ${pts.c2.y}, ${pts.p1.x} ${pts.p1.y}`;
+      return `<path d="${pathD}" ${transformAttr} fill="none" stroke="${stroke}" stroke-width="${thickness || strokeWidth}" ${strokeDash ? `stroke-dasharray="${strokeDash}"` : ''} />`;
+    }
+
+    case "arc": {
+      const r = radius || 50;
+      const startRad = ((startAngle || 0) * Math.PI) / 180;
+      const endRad = (((startAngle || 0) + (sweepAngle || 90)) * Math.PI) / 180;
+      const x1 = r * Math.cos(startRad);
+      const y1 = r * Math.sin(startRad);
+      const x2 = r * Math.cos(endRad);
+      const y2 = r * Math.sin(endRad);
+      const largeArc = (sweepAngle || 90) > 180 ? 1 : 0;
+      const pathD = `M ${x1} ${y1} A ${r} ${r} 0 ${largeArc} 1 ${x2} ${y2}`;
+      return `<path d="${pathD}" ${transformAttr} fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash ? `stroke-dasharray="${strokeDash}"` : ''} />`;
+    }
+
     case "polygon": {
-      const pathD = getPolygonPath(sides || 3, radius || 10);
+      const curvature = node.renderData.edgeCurvature || 0;
+      const triType = node.renderData.triangleType;
+      const pathD = getPolygonPath(sides || 3, radius || 10, curvature, triType);
       return `<path d="${pathD}" ${transformAttr} fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" ${strokeDash ? `stroke-dasharray="${strokeDash}"` : ''} />`;
     }
 
@@ -137,19 +232,19 @@ function renderNodeToSVG(
 
     case "arcText": {
       if (layer !== "artwork") return "";
-      const chars = (content || "").split("");
-      const n = chars.length;
-      const actualSweep = sweepAngle !== undefined && sweepAngle !== 0 ? sweepAngle : (chars.length * (fontSize * 0.5) / Math.max(1, radius)) * (180 / Math.PI);
+      const kerning = node.renderData.kerning || 0;
+      const layout = getArcTextCharPositions(
+        content || "",
+        radius || 100,
+        startAngle || 0,
+        fontSize || 12,
+        fontFamily || "sans-serif",
+        kerning
+      );
 
       let textGroup = `<g ${transformAttr}>`;
-      chars.forEach((char: string, i: number) => {
-        const charAngle = n > 1 ? startAngle + i * (actualSweep / (n - 1)) : startAngle;
-        const angleRad = (charAngle * Math.PI) / 180;
-        const cx = radius * Math.cos(angleRad);
-        const cy = radius * Math.sin(angleRad);
-        const charRotation = charAngle + 90;
-
-        textGroup += `\n    <text transform="translate(${cx}, ${cy}) rotate(${charRotation})" font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${(fontSize || 12) * 0.35}">${char}</text>`;
+      layout.charPositions.forEach((cp) => {
+        textGroup += `\n    <text transform="translate(${cp.x}, ${cp.y}) rotate(${cp.rotation})" font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${(fontSize || 12) * 0.35}">${cp.char}</text>`;
       });
       textGroup += `\n  </g>`;
       return textGroup;
@@ -162,8 +257,45 @@ function renderNodeToSVG(
       const asset = assets.find((a) => a.id === assetId);
       if (!asset) return "";
 
+      const w = node.bounds?.width || 100;
+      const h = node.bounds?.height || 100;
       const hrefStr = embedAssets ? asset.embeddedData : `assets/${asset.id}.${asset.type}`;
-      return `<image href="${hrefStr}" x="-50" y="-50" width="100" height="100" ${transformAttr} />`;
+      return `<image href="${hrefStr}" x="-${w / 2}" y="-${h / 2}" width="${w}" height="${h}" ${transformAttr} />`;
+    }
+
+    case "tab": {
+      if (layer !== "artwork") return "";
+      const width = node.bounds?.width || 30;
+      const height = node.bounds?.height || 20;
+      const tabShape = node.renderData.tabShape || "rectangular";
+      const targetRingId = node.renderData.targetRingId || "";
+      const gearRatio = node.renderData.gearRatio ?? 1.0;
+      const trackSweep = node.renderData.trackSweep ?? 360.0;
+      const label = node.renderData.label || "";
+      const radius = node.renderData.radius || 100;
+      const angle = node.renderData.angle || 0;
+
+      const fill = style?.fill || "#3b82f6";
+      const stroke = style?.stroke || "#1e3a8a";
+      const strokeWidth = style?.strokeWidth ?? 1.5;
+
+      let shapeSvg = "";
+      if (tabShape === "semicircular") {
+        const r = height / 2;
+        shapeSvg = `<path d="M -${width/2},-${height/2} L 0,-${height/2} A ${r},${r} 0 0,1 0,${height/2} L -${width/2},${height/2} Z" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+      } else if (tabShape === "trapezoidal") {
+        shapeSvg = `<polygon points="-${width/2},-${height/2} ${width/2},-${height/3} ${width/2},${height/3} -${width/2},${height/2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+      } else {
+        shapeSvg = `<rect x="-${width/2}" y="-${height/2}" width="${width}" height="${height}" rx="4" ry="4" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
+      }
+
+      let labelSvg = "";
+      if (label) {
+        const fontSize = Math.min(10, height - 4);
+        labelSvg = `<text x="0" y="0" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${fontSize}" fill="${stroke}">${label}</text>`;
+      }
+
+      return `<g id="tab-control-${node.id}" class="tab-control-element" data-target-ring="${targetRingId}" data-gear-ratio="${gearRatio}" data-track-sweep="${trackSweep}" data-initial-angle="${angle}" data-radius="${radius}" ${transformAttr}>${shapeSvg}${labelSvg}</g>`;
     }
 
     case "window": {
@@ -178,6 +310,27 @@ function renderNodeToSVG(
         } else if (shape.type === "polygon") {
           const pathD = getPolygonPath(shape.sides || 3, shape.radius || 10);
           return `<path d="${pathD}" ${shTransformAttr} stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        } else if (shape.type === "star") {
+          const pathD = getStarPath(shape.numPoints || 5, shape.innerRadius || 15, shape.outerRadius || 35);
+          return `<path d="${pathD}" ${shTransformAttr} stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        } else if (shape.type === "trapezoid") {
+          const bw = (shape.baseWidth || 60) / 2;
+          const tw = (shape.topWidth || 40) / 2;
+          const hh = (shape.height || 50) / 2;
+          return `<polygon points="-${bw},${hh} ${bw},${hh} ${tw},-${hh} -${tw},-${hh}" ${shTransformAttr} stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        } else if (shape.type === "crescent") {
+          const r = shape.radius || 30;
+          const ratio = shape.ratio !== undefined ? shape.ratio : 0.4;
+          const innerR = r * (1 - ratio);
+          const pathD = `M 0,-${r} A ${r},${r} 0 0,1 0,${r} A ${innerR},${innerR} 0 0,0 0,-${r} Z`;
+          return `<path d="${pathD}" ${shTransformAttr} stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        } else if (shape.type === "line") {
+          return `<line x1="0" y1="0" x2="${shape.length || 50}" y2="0" ${shTransformAttr} stroke="${stroke}" stroke-width="${shape.thickness || strokeWidth}" fill="none" />`;
+        } else if (shape.type === "text" || shape.type === "arcText" || shape.type === "sectorLabel") {
+          const content = shape.content || "Text";
+          const fontSize = shape.fontSize || 14;
+          const fontFamily = shape.fontFamily || "sans-serif";
+          return `<text x="0" y="0" ${shTransformAttr} font-family="${fontFamily}" font-size="${fontSize}" fill="none" stroke="${stroke}" stroke-width="${strokeWidth}" text-anchor="middle" dy="${fontSize * 0.35}">${content}</text>`;
         }
       }
       return "";
@@ -439,6 +592,50 @@ export function generateSVG(project: Project, options: SVGExportOptions): string
   if (options.includeAlignmentTicks) {
     const ticksSvg = renderAlignmentTicks(maxRadius);
     svg += `\n  ${ticksSvg.replace(/\n/g, "\n  ")}\n`;
+  }
+
+  // Auto-Generated Grab Tabs for interactive volvelles
+  if ((options.layer === "artwork" || options.layer === "all") && project.settings.showGrabTabs !== false) {
+    const originalRings = (project.mechanism.children || []).filter((c) => c.type === "ring") as any[];
+    if (originalRings.length > 0) {
+      const maxOuterRadius = originalRings.reduce((max, r) => Math.max(max, r.outerRadius || 100), 100);
+      svg += `\n  <!-- Auto-Generated Concentric Grab Tabs -->`;
+      svg += `\n  <g id="auto-grab-tabs">`;
+      originalRings.forEach((ring, idx) => {
+        const ringColor = RING_COLORS[idx % RING_COLORS.length];
+        const R_track = maxOuterRadius + 90 + idx * 22;
+        
+        const tWidth = ring.tabWidth ?? 30;
+        const tHeight = ring.tabHeight ?? 20;
+        const tShape = ring.tabShape ?? "semicircular";
+        const tLabel = ring.tabLabel || `#${originalRings.length - idx}`;
+        
+        // Dashed slot track arc path (-135 to -45 degrees)
+        const startX = -0.7071 * R_track;
+        const startY = -0.7071 * R_track;
+        const endX = 0.7071 * R_track;
+        const endY = -0.7071 * R_track;
+        svg += `\n    <path d="M ${startX} ${startY} A ${R_track} ${R_track} 0 0 1 ${endX} ${endY}" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-dasharray="3,3" />`;
+
+        // Calculate handle position
+        const ccwRot = 360 - (ring.rotation || 0);
+        const tabAngle = -135 + ccwRot / 4.0;
+        const rad = (tabAngle * Math.PI) / 180;
+        const hx = R_track * Math.cos(rad);
+        const hy = R_track * Math.sin(rad);
+
+        svg += `\n    <g id="tab-handle-${ring.id}" class="tab-control-element" data-target-ring="${ring.id}" data-radius="${R_track}" transform="translate(${hx}, ${hy}) rotate(${tabAngle})">`;
+        if (tShape === "trapezoidal") {
+          svg += `\n      <path d="M ${-tWidth/2} ${-tHeight/2} L ${tWidth/2} ${-tHeight*0.3} L ${tWidth/2} ${tHeight*0.3} L ${-tWidth/2} ${tHeight/2} Z" fill="${ringColor}" stroke="rgba(0,0,0,0.3)" stroke-width="1" style="cursor: pointer;" />`;
+        } else {
+          const rx = tShape === "semicircular" ? tHeight / 2 : 0;
+          svg += `\n      <rect x="${-tWidth/2}" y="${-tHeight/2}" width="${tWidth}" height="${tHeight}" rx="${rx}" ry="${rx}" fill="${ringColor}" stroke="rgba(0,0,0,0.3)" stroke-width="1" style="cursor: pointer;" />`;
+        }
+        svg += `\n      <text x="0" y="0" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${Math.min(10, tHeight * 0.5)}" font-weight="bold" fill="#ffffff" style="cursor: pointer;">${tLabel}</text>`;
+        svg += `\n    </g>`;
+      });
+      svg += `\n  </g>\n`;
+    }
   }
 
   svg += `</svg>`;

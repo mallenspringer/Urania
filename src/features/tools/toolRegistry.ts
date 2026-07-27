@@ -1,9 +1,9 @@
 import type { Tool } from "./toolTypes";
 import { selectTool } from "./selectTool";
-import { rectangleTool, circleTool, polygonTool } from "./shapeTool";
+import { rectangleTool, circleTool, polygonTool, trapezoidTool, crescentTool, starTool, lineTool } from "./shapeTool";
 import { windowCircleTool, windowRectangleTool, windowPolygonTool } from "./windowTool";
 import { textTool, arcTextTool } from "./textTool";
-import { radialGuideTool, circularGuideTool } from "./guideTool";
+import { curveTool, arcTool } from "./curveTool";
 
 class Registry {
   private tools = new Map<string, Tool>();
@@ -28,10 +28,14 @@ toolRegistry.register(selectTool);
 toolRegistry.register(rectangleTool);
 toolRegistry.register(circleTool);
 toolRegistry.register(polygonTool);
+toolRegistry.register(trapezoidTool);
+toolRegistry.register(crescentTool);
+toolRegistry.register(starTool);
+toolRegistry.register(lineTool);
+toolRegistry.register(curveTool);
+toolRegistry.register(arcTool);
 toolRegistry.register(windowCircleTool);
 toolRegistry.register(windowRectangleTool);
 toolRegistry.register(windowPolygonTool);
 toolRegistry.register(textTool);
 toolRegistry.register(arcTextTool);
-toolRegistry.register(radialGuideTool);
-toolRegistry.register(circularGuideTool);

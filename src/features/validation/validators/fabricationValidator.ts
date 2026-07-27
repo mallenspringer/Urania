@@ -74,7 +74,7 @@ function checkRingsFabrication(node: BaseNode, issues: ValidationIssue[]) {
       let isSmall = false;
       let shapeDesc = "";
       if (win.shape) {
-        const shape = win.shape;
+        const shape = win.shape as any;
         if (shape.type === "circle" && shape.radius * 2 < 10) {
           isSmall = true;
           shapeDesc = `diameter ${Math.round(shape.radius * 2)}px`;

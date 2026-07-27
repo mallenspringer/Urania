@@ -279,6 +279,12 @@ export function generateInteractiveHTML(project: Project, options: RuntimeExport
     let startPointerAngle = 0;
     let startRingAngle = 0;
 
+    let activeTabId = null;
+    let activeTabTargetRingId = null;
+    let activeTabGearRatio = 1.0;
+    let activeTabStartRingAngle = 0;
+    let activeTabStartPointerAngle = 0;
+
     // Attach event listeners to ring groups
     rings.forEach(r => {
       const g = document.getElementById("ring-group-" + r.id);
@@ -325,8 +331,59 @@ export function generateInteractiveHTML(project: Project, options: RuntimeExport
       }
     });
 
+    // Attach event listeners to grab tabs
+    document.querySelectorAll(".tab-control-element").forEach(tab => {
+      const targetId = tab.getAttribute("data-target-ring");
+
+      const handleStart = (clientX, clientY) => {
+        activeTabId = tab.id;
+        activeTabTargetRingId = targetId;
+        document.body.style.userSelect = "none";
+      };
+
+      tab.addEventListener("mousedown", (e) => {
+        e.stopPropagation(); // Stop parent ring dragging!
+        handleStart(e.clientX, e.clientY);
+      });
+
+      tab.addEventListener("touchstart", (e) => {
+        e.stopPropagation(); // Stop parent ring dragging!
+        if (e.touches.length === 1) {
+          handleStart(e.touches[0].clientX, e.touches[0].clientY);
+        }
+      });
+    });
+
     // Document Mouse Move / Touch Move
     const handleMove = (clientX, clientY) => {
+      if (activeTabId && activeTabTargetRingId) {
+        const tabEl = document.getElementById(activeTabId);
+        if (!tabEl) return;
+        const svgElement = tabEl.ownerSVGElement;
+        const svgRect = svgElement.getBoundingClientRect();
+        const cx = svgRect.left + svgRect.width / 2;
+        const cy = svgRect.top + svgRect.height / 2;
+
+        let currentPointerAngle = Math.atan2(clientY - cy, clientX - cx) * (180 / Math.PI);
+        if (currentPointerAngle < -180) currentPointerAngle += 360;
+        if (currentPointerAngle > 180) currentPointerAngle -= 360;
+
+        // Shift angle by +90 so slot track center (-90) becomes 0
+        let rotAngle = currentPointerAngle + 90;
+        if (rotAngle < -180) rotAngle += 360;
+        if (rotAngle > 180) rotAngle -= 360;
+
+        const clampedRot = Math.max(-45, Math.min(45, rotAngle));
+        const clampedAngle = clampedRot - 90;
+
+        // Gearing: 0 to 360 degrees counter-clockwise
+        const ccwRotation = (clampedAngle - (-135)) * 4.0;
+        const cwRotation = 360 - ccwRotation;
+
+        setRingRotation(activeTabTargetRingId, cwRotation);
+        return;
+      }
+
       if (!activeRingId) return;
       
       const g = document.getElementById("ring-group-" + activeRingId);
@@ -349,13 +406,19 @@ export function generateInteractiveHTML(project: Project, options: RuntimeExport
     });
 
     window.addEventListener("touchmove", (e) => {
-      if (activeRingId && e.touches.length === 1) {
+      if ((activeRingId || activeTabId) && e.touches.length === 1) {
         handleMove(e.touches[0].clientX, e.touches[0].clientY);
       }
     });
 
     // Document Mouse Up / Touch End
     const handleEnd = () => {
+      if (activeTabId) {
+        activeTabId = null;
+        activeTabTargetRingId = null;
+        document.body.style.userSelect = "";
+        saveState();
+      }
       if (activeRingId) {
         activeRingId = null;
         document.body.style.userSelect = "";
@@ -383,6 +446,18 @@ export function generateInteractiveHTML(project: Project, options: RuntimeExport
       const g = document.getElementById("ring-group-" + id);
       if (g) {
         g.setAttribute("transform", "rotate(" + rotation + ")");
+      }
+      
+      // Update tab handle position if tab exists
+      const tab = document.getElementById("tab-handle-" + id);
+      if (tab) {
+        const radius = parseFloat(tab.getAttribute("data-radius") || "100");
+        const ccwRot = 360 - rotation;
+        const tabAngle = -135 + ccwRot / 4.0;
+        const rad = (tabAngle * Math.PI) / 180;
+        const tx = radius * Math.cos(rad);
+        const ty = radius * Math.sin(rad);
+        tab.setAttribute("transform", "translate(" + tx + ", " + ty + ") rotate(" + tabAngle + ")");
       }
       
       // Update HUD value text

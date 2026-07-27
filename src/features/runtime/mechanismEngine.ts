@@ -15,7 +15,7 @@ import type {
   WindowNode,
   RadialPatternNode,
   Transform,
-
+  TabNode,
 } from "../../shared/types/project";
 import { Matrix2D } from "../../shared/utils/matrix";
 
@@ -85,12 +85,48 @@ function resolveNode(
   ringContext: { id: string; innerRadius: number; outerRadius: number } | null
 ): void {
   let localMatrix = Matrix2D.identity();
+  let radialRadius = 0;
+  let radialTheta = 0;
+  let isRadialWarpActive = false;
 
-  if (node.transform) {
-    localMatrix = localMatrix
-      .translate(node.transform.x, node.transform.y)
-      .rotate(node.transform.rotation)
-      .scale(node.transform.scaleX, node.transform.scaleY);
+  const isRadial = node.transformMode === "radial" && node.type !== "ring" && node.type !== "sector";
+
+  if (node.type === "tab") {
+    const tab = node as TabNode;
+    localMatrix = Matrix2D.identity()
+      .rotate(tab.angle)
+      .translate(tab.radius, 0)
+      .rotate(node.transform?.rotation || 0)
+      .scale(node.transform?.scaleX || 1, node.transform?.scaleY || 1);
+  } else if (node.transform) {
+    if (isRadial) {
+      const rx = node.transform.x;
+      const ry = node.transform.y;
+      radialRadius = Math.sqrt(rx * rx + ry * ry);
+      const thetaRad = Math.atan2(ry, rx);
+      let thetaDeg = (thetaRad * 180) / Math.PI;
+      radialTheta = (thetaDeg % 360 + 360) % 360;
+
+      const isWarpedType = node.type === "rectangle" || node.type === "trapezoid";
+
+      if (isWarpedType) {
+        localMatrix = localMatrix
+          .rotate(radialTheta)
+          .scale(node.transform.scaleX, node.transform.scaleY);
+        isRadialWarpActive = true;
+      } else {
+        localMatrix = localMatrix
+          .rotate(radialTheta)
+          .translate(radialRadius, 0)
+          .rotate(node.transform.rotation)
+          .scale(node.transform.scaleX, node.transform.scaleY);
+      }
+    } else {
+      localMatrix = localMatrix
+        .translate(node.transform.x, node.transform.y)
+        .rotate(node.transform.rotation)
+        .scale(node.transform.scaleX, node.transform.scaleY);
+    }
   }
 
   // Ring rotation
@@ -111,6 +147,11 @@ function resolveNode(
   const visible = parentVisible && node.visible !== false;
 
   const renderData: Record<string, any> = {};
+  if (isRadialWarpActive) {
+    renderData.radialRadius = radialRadius;
+    renderData.radialTheta = radialTheta;
+    renderData.isRadialWarp = true;
+  }
   let bounds: Bounds = { x: 0, y: 0, width: 0, height: 0 };
 
   // Copy elements parameters
@@ -120,12 +161,26 @@ function resolveNode(
   if ("export" in node) {
     renderData.export = (node as any).export;
   }
+  if ("edgeCurvature" in node) {
+    renderData.edgeCurvature = (node as any).edgeCurvature;
+  }
+  if ("triangleType" in node) {
+    renderData.triangleType = (node as any).triangleType;
+  }
 
   switch (node.type) {
     case "ring": {
       const r = node as RingNode;
       renderData.innerRadius = r.innerRadius;
       renderData.outerRadius = r.outerRadius;
+      renderData.rotation = r.rotation;
+      renderData.ringShape = r.ringShape;
+      renderData.polygonSides = r.polygonSides;
+      renderData.radialSlices = r.radialSlices;
+      renderData.tabShape = r.tabShape;
+      renderData.tabWidth = r.tabWidth;
+      renderData.tabHeight = r.tabHeight;
+      renderData.tabLabel = r.tabLabel;
       bounds = {
         x: -r.outerRadius,
         y: -r.outerRadius,
@@ -160,7 +215,50 @@ function resolveNode(
       const r = node as RectangleNode;
       renderData.width = r.width;
       renderData.height = r.height;
-      bounds = { x: -r.width / 2, y: -r.height / 2, width: r.width, height: r.height };
+      if (isRadialWarpActive) {
+        bounds = { x: 0, y: 0, width: r.width, height: r.height };
+      } else {
+        bounds = { x: -r.width / 2, y: -r.height / 2, width: r.width, height: r.height };
+      }
+      break;
+    }
+    case "trapezoid": {
+      const tr = node as any;
+      renderData.baseWidth = tr.baseWidth || 60;
+      renderData.topWidth = tr.topWidth || 40;
+      renderData.height = tr.height || 50;
+      const maxW = Math.max(renderData.baseWidth, renderData.topWidth);
+      if (isRadialWarpActive) {
+        bounds = { x: 0, y: 0, width: maxW, height: renderData.height };
+      } else {
+        bounds = { x: -maxW / 2, y: -renderData.height / 2, width: maxW, height: renderData.height };
+      }
+      break;
+    }
+    case "crescent": {
+      const cr = node as any;
+      renderData.radius = cr.radius || 30;
+      renderData.ratio = cr.ratio !== undefined ? cr.ratio : 0.4;
+      renderData.phase = cr.phase !== undefined ? cr.phase : 0.5;
+      bounds = {
+        x: -renderData.radius,
+        y: -renderData.radius,
+        width: renderData.radius * 2,
+        height: renderData.radius * 2,
+      };
+      break;
+    }
+    case "star": {
+      const st = node as any;
+      renderData.numPoints = st.numPoints || 5;
+      renderData.innerRadius = st.innerRadius || 15;
+      renderData.outerRadius = st.outerRadius || 35;
+      bounds = {
+        x: -renderData.outerRadius,
+        y: -renderData.outerRadius,
+        width: renderData.outerRadius * 2,
+        height: renderData.outerRadius * 2,
+      };
       break;
     }
     case "line": {
@@ -183,6 +281,16 @@ function resolveNode(
       renderData.content = t.content;
       renderData.fontFamily = t.fontFamily;
       renderData.fontSize = t.fontSize;
+      const styles = [];
+      if (t.bold) styles.push("bold");
+      if (t.italic) styles.push("italic");
+      renderData.fontStyle = styles.join(" ") || "normal";
+      const decs = [];
+      if (t.underline) decs.push("underline");
+      if (t.strikethrough) decs.push("line-through");
+      renderData.textDecoration = decs.join(" ") || "";
+
+      renderData.kerning = t.kerning || 0;
       const charWidth = t.fontSize * 0.6;
       bounds = {
         x: 0,
@@ -200,6 +308,16 @@ function resolveNode(
       renderData.sweepAngle = a.sweepAngle;
       renderData.fontFamily = a.fontFamily;
       renderData.fontSize = a.fontSize;
+      renderData.kerning = a.kerning || 0;
+      const styles = [];
+      if (a.bold) styles.push("bold");
+      if (a.italic) styles.push("italic");
+      renderData.fontStyle = styles.join(" ") || "normal";
+      const decs = [];
+      if (a.underline) decs.push("underline");
+      if (a.strikethrough) decs.push("line-through");
+      renderData.textDecoration = decs.join(" ") || "";
+
       bounds = {
         x: -(a.radius + a.fontSize),
         y: -(a.radius + a.fontSize),
@@ -213,36 +331,77 @@ function resolveNode(
       renderData.content = sl.content;
       renderData.fontFamily = sl.fontFamily;
       renderData.fontSize = sl.fontSize;
+      const styles = [];
+      if (sl.bold) styles.push("bold");
+      if (sl.italic) styles.push("italic");
+      renderData.fontStyle = styles.join(" ") || "normal";
+      const decs = [];
+      if (sl.underline) decs.push("underline");
+      if (sl.strikethrough) decs.push("line-through");
+      renderData.textDecoration = decs.join(" ") || "";
+
       bounds = { x: -50, y: -10, width: 100, height: 20 };
       break;
     }
     case "image": {
       const img = node as ImageNode;
       renderData.assetId = img.assetId;
-      bounds = { x: -50, y: -50, width: 100, height: 100 };
+      const w = img.width || 100;
+      const h = img.height || 100;
+      bounds = { x: -w / 2, y: -h / 2, width: w, height: h };
       break;
     }
     case "svgAsset": {
       const svg = node as SvgAssetNode;
       renderData.assetId = svg.assetId;
-      bounds = { x: -50, y: -50, width: 100, height: 100 };
+      const w = svg.width || 100;
+      const h = svg.height || 100;
+      bounds = { x: -w / 2, y: -h / 2, width: w, height: h };
+      break;
+    }
+    case "tab": {
+      const tab = node as TabNode;
+      renderData.radius = tab.radius;
+      renderData.angle = tab.angle;
+      renderData.tabShape = tab.tabShape || "rectangular";
+      renderData.targetRingId = tab.targetRingId;
+      renderData.gearRatio = tab.gearRatio ?? 1;
+      renderData.trackSweep = tab.trackSweep ?? 360;
+      renderData.label = tab.label || "";
+      bounds = { x: -tab.width / 2, y: -tab.height / 2, width: tab.width, height: tab.height };
+      break;
+    }
+    case "curve": {
+      const c = node as any;
+      const pts = c.controlPoints || { p0: { x: 0, y: 0 }, c1: { x: 50, y: -50 }, c2: { x: 100, y: 50 }, p1: { x: 150, y: 0 } };
+      renderData.controlPoints = pts;
+      const minX = Math.min(pts.p0.x, pts.c1.x, pts.c2.x, pts.p1.x);
+      const maxX = Math.max(pts.p0.x, pts.c1.x, pts.c2.x, pts.p1.x);
+      const minY = Math.min(pts.p0.y, pts.c1.y, pts.c2.y, pts.p1.y);
+      const maxY = Math.max(pts.p0.y, pts.c1.y, pts.c2.y, pts.p1.y);
+      bounds = { x: minX, y: minY, width: Math.max(10, maxX - minX), height: Math.max(10, maxY - minY) };
+      break;
+    }
+    case "arc": {
+      const a = node as any;
+      renderData.radius = a.radius;
+      renderData.startAngle = a.startAngle;
+      renderData.sweepAngle = a.sweepAngle;
+      renderData.thickness = a.thickness || 0;
+      const r = a.radius || 50;
+      bounds = { x: -r, y: -r, width: r * 2, height: r * 2 };
       break;
     }
     case "window": {
       const w = node as WindowNode;
       renderData.shape = w.shape;
       if (w.shape) {
-        if (w.shape.type === "circle") {
-          const r = w.shape.radius;
-          bounds = { x: -r, y: -r, width: r * 2, height: r * 2 };
-        } else if (w.shape.type === "rectangle") {
-          const r = w.shape;
-          bounds = { x: -r.width / 2, y: -r.height / 2, width: r.width, height: r.height };
-        } else if (w.shape.type === "polygon") {
-          const r = w.shape.radius;
-          bounds = { x: -r, y: -r, width: r * 2, height: r * 2 };
-        }
+        bounds = computeLocalBounds(w.shape);
       }
+      break;
+    }
+    case "group": {
+      bounds = computeLocalBounds(node);
       break;
     }
   }
@@ -371,4 +530,77 @@ export function resolveProject(project: Project): ResolvedNode[] {
   }
 
   return resolved;
+}
+
+function computeLocalBounds(node: BaseNode): { x: number; y: number; width: number; height: number } {
+  if (node.type === "window" && (node as any).shape) {
+    return computeLocalBounds((node as any).shape);
+  }
+  if (node.type === "rectangle") {
+    const w = (node as any).width || 20;
+    const h = (node as any).height || 20;
+    return { x: -w / 2, y: -h / 2, width: w, height: h };
+  }
+  if (node.type === "circle") {
+    const r = (node as any).radius || 10;
+    return { x: -r, y: -r, width: r * 2, height: r * 2 };
+  }
+  if (node.type === "star") {
+    const r = (node as any).outerRadius || 35;
+    return { x: -r, y: -r, width: r * 2, height: r * 2 };
+  }
+  if (node.type === "crescent") {
+    const r = (node as any).radius || 30;
+    return { x: -r, y: -r, width: r * 2, height: r * 2 };
+  }
+  if (node.type === "polygon") {
+    const r = (node as any).radius || 10;
+    return { x: -r, y: -r, width: r * 2, height: r * 2 };
+  }
+  if (node.type === "trapezoid") {
+    const baseW = (node as any).baseWidth || 60;
+    const topW = (node as any).topWidth || 40;
+    const maxW = Math.max(baseW, topW);
+    const h = (node as any).height || 50;
+    return { x: -maxW / 2, y: -h / 2, width: maxW, height: h };
+  }
+  if (node.type === "line") {
+    const l = (node as any).length || 20;
+    const t = (node as any).thickness || 2;
+    return { x: 0, y: -t / 2, width: l, height: t };
+  }
+  if (node.type === "text" || node.type === "sectorLabel") {
+    const fs = (node as any).fontSize || 14;
+    const len = ((node as any).content || "").length || 4;
+    const w = len * fs * 0.6;
+    return { x: 0, y: -fs, width: w, height: fs };
+  }
+  if (node.type === "arcText") {
+    const fs = (node as any).fontSize || 12;
+    const r = (node as any).radius || 50;
+    const w = (r + fs) * 2;
+    return { x: -w / 2, y: -w / 2, width: w, height: w };
+  }
+  if (node.type === "image" || node.type === "svgAsset") {
+    return { x: -50, y: -50, width: 100, height: 100 };
+  }
+  if (node.type === "group" && node.children) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const child of node.children) {
+      const b = computeLocalBounds(child);
+      // Transform local child bounds by child's transform
+      const left = child.transform.x + b.x;
+      const right = child.transform.x + b.x + b.width;
+      const top = child.transform.y + b.y;
+      const bottom = child.transform.y + b.y + b.height;
+      minX = Math.min(minX, left);
+      maxX = Math.max(maxX, right);
+      minY = Math.min(minY, top);
+      maxY = Math.max(maxY, bottom);
+    }
+    if (minX !== Infinity) {
+      return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
+    }
+  }
+  return { x: -10, y: -10, width: 20, height: 20 };
 }

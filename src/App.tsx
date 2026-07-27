@@ -4,13 +4,19 @@ import {
   Redo2,
   Plus,
   Trash2,
-  RotateCw,
   Info,
   Sliders,
   Layers,
   FileCode,
   AlertTriangle,
   XCircle,
+  Home,
+  ArrowRight,
+  GripVertical,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { useProjectStore } from "./features/project/projectStore";
 import { useSelectionStore } from "./features/selection/selectionStore";
@@ -21,244 +27,39 @@ import { resolveProject } from "./features/runtime/mechanismEngine";
 import type {
   Project,
   RingNode,
-  SectorNode,
-  WindowNode,
-  ArcTextNode,
-  CircleNode,
 } from "./shared/types/project";
 import {
   CreateRingCommand,
   DeleteRingCommand,
   RotateRingCommand,
+  ReorderRingsCommand,
+  UpdateNodeCommand,
 } from "./features/project/commands";
 import { CanvasWorkspace } from "./shared/ui/CanvasWorkspace";
 import { InspectorPanel } from "./shared/ui/InspectorPanel";
 import { ExportModal } from "./shared/ui/ExportModal";
+import { DeleteLayerModal } from "./shared/ui/DeleteLayerModal";
+import { Dashboard } from "./shared/ui/Dashboard";
+import { IntroLoader } from "./shared/ui/IntroLoader";
+import {
+  cloneProjectWithNewIds,
+  loadAutosave,
+  saveAutosave,
+  saveBackup,
+} from "./features/templates/templateManager";
+import type { Template } from "./features/templates/templateLibrary";
 import "./App.css";
 
-const DEMO_VOLVELLE: Project = {
-  format: "urania",
-  version: "1.0.0",
-  mechanismType: "volvelle",
-  metadata: {
-    name: "Urania Lunar & Solar Calendar",
-    author: "Antigravity Team",
-    description:
-      "A dual-ring paper computer demonstrating window reveal masks, polar text alignment, and concentric ring layouts.",
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  },
-  settings: {
-    units: "pixels",
-    canvasSize: { width: 800, height: 800 },
-  },
-  assets: [],
-  mechanism: {
-    id: "volvelle-root",
-    type: "volvelle",
-    name: "Volvelle Root",
-    visible: true,
-    locked: false,
-    transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-    children: [
-      // Bottom Layer Ring: Calendar Seasons & Months
-      {
-        id: "ring-calendar-base",
-        type: "ring",
-        name: "Base Calendar Ring",
-        visible: true,
-        locked: false,
-        transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-        innerRadius: 100,
-        outerRadius: 220,
-        rotation: 0,
-        children: [
-          // Spring Sector (0 - 90 deg)
-          {
-            id: "sector-spring",
-            type: "sector",
-            name: "Spring",
-            visible: true,
-            locked: false,
-            transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            startAngle: 0,
-            endAngle: 90,
-            children: [
-              {
-                id: "label-spring-arc",
-                type: "arcText",
-                name: "Spring Arc Text",
-                visible: true,
-                locked: false,
-                transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-                style: { fill: "#10b981" },
-                export: { artwork: true, cut: false, fold: false },
-                content: "SPRING EQUINOX",
-                radius: 170,
-                startAngle: 10,
-                sweepAngle: 70,
-                fontFamily: "Outfit, sans-serif",
-                fontSize: 14,
-              } as ArcTextNode,
-            ],
-          } as SectorNode,
-          // Summer Sector (90 - 180 deg)
-          {
-            id: "sector-summer",
-            type: "sector",
-            name: "Summer",
-            visible: true,
-            locked: false,
-            transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            startAngle: 90,
-            endAngle: 180,
-            children: [
-              {
-                id: "label-summer-arc",
-                type: "arcText",
-                name: "Summer Arc Text",
-                visible: true,
-                locked: false,
-                transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-                style: { fill: "#eab308" },
-                export: { artwork: true, cut: false, fold: false },
-                content: "SUMMER SOLSTICE",
-                radius: 170,
-                startAngle: 10,
-                sweepAngle: 70,
-                fontFamily: "Outfit, sans-serif",
-                fontSize: 14,
-              } as ArcTextNode,
-            ],
-          } as SectorNode,
-          // Autumn Sector (180 - 270 deg)
-          {
-            id: "sector-autumn",
-            type: "sector",
-            name: "Autumn",
-            visible: true,
-            locked: false,
-            transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            startAngle: 180,
-            endAngle: 270,
-            children: [
-              {
-                id: "label-autumn-arc",
-                type: "arcText",
-                name: "Autumn Arc Text",
-                visible: true,
-                locked: false,
-                transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-                style: { fill: "#f97316" },
-                export: { artwork: true, cut: false, fold: false },
-                content: "AUTUMN EQUINOX",
-                radius: 170,
-                startAngle: 10,
-                sweepAngle: 70,
-                fontFamily: "Outfit, sans-serif",
-                fontSize: 14,
-              } as ArcTextNode,
-            ],
-          } as SectorNode,
-          // Winter Sector (270 - 360 deg)
-          {
-            id: "sector-winter",
-            type: "sector",
-            name: "Winter",
-            visible: true,
-            locked: false,
-            transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            startAngle: 270,
-            endAngle: 360,
-            children: [
-              {
-                id: "label-winter-arc",
-                type: "arcText",
-                name: "Winter Arc Text",
-                visible: true,
-                locked: false,
-                transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-                style: { fill: "#3b82f6" },
-                export: { artwork: true, cut: false, fold: false },
-                content: "WINTER SOLSTICE",
-                radius: 170,
-                startAngle: 10,
-                sweepAngle: 70,
-                fontFamily: "Outfit, sans-serif",
-                fontSize: 14,
-              } as ArcTextNode,
-            ],
-          } as SectorNode,
-        ],
-      } as RingNode,
-
-      // Top Layer Ring: Revealing Cover with cutout windows & indicators
-      {
-        id: "ring-masking-cover",
-        type: "ring",
-        name: "Top Masking Dial",
-        visible: true,
-        locked: false,
-        transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-        innerRadius: 0,
-        outerRadius: 220,
-        rotation: 45, // Init rotated to show alignment
-        children: [
-          // Reveal Window 1 (circular hole at radius 170, revealing season text)
-          {
-            id: "window-reveal-circle",
-            type: "window",
-            name: "Season Window",
-            visible: true,
-            locked: false,
-            transform: { x: 170, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            style: {},
-            export: { artwork: false, cut: true, fold: false },
-            shape: {
-              id: "window-circle-shape",
-              type: "circle",
-              visible: true,
-              locked: false,
-              transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-              style: {},
-              export: { artwork: false, cut: true, fold: false },
-              radius: 40,
-            } as CircleNode,
-          } as WindowNode,
-          // Decorative border ring on the cover
-          {
-            id: "decorative-inner-circle",
-            type: "circle",
-            name: "Inner Circle Divider",
-            visible: true,
-            locked: false,
-            transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            style: { stroke: "#6366f1", fill: "rgba(99, 102, 241, 0.05)" },
-            export: { artwork: true, cut: false, fold: false },
-            radius: 110,
-          } as any,
-          // Header title text along the inner dial
-          {
-            id: "label-cover-title",
-            type: "arcText",
-            name: "Cover Label Arc",
-            visible: true,
-            locked: false,
-            transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-            style: { fill: "#d946ef" },
-            export: { artwork: true, cut: false, fold: false },
-            content: "✦ URANIA VOLVELLE COMPUTER ✦",
-            radius: 85,
-            startAngle: -150,
-            sweepAngle: 300,
-            fontFamily: "Outfit, sans-serif",
-            fontSize: 11,
-          } as ArcTextNode,
-        ],
-      } as RingNode,
-    ],
-  },
-};
+export const RING_COLORS = [
+  "#6366f1", // Indigo
+  "#10b981", // Emerald
+  "#ec4899", // Pink
+  "#f59e0b", // Amber
+  "#3b82f6", // Blue
+  "#8b5cf6", // Purple
+  "#ef4444", // Red
+  "#06b6d4", // Cyan
+];
 
 export default function App() {
   const { project, past, future, setProject, executeCommand, undo, redo } =
@@ -273,10 +74,94 @@ export default function App() {
 
   const resolvedNodes = useMemo(() => resolveProject(project), [project]);
 
-  const { zoom, setPan } = useViewStore();
+  const {
+    zoom,
+    setPan,
+    isLeftSidebarOpen,
+    isRightSidebarOpen,
+    toggleLeftSidebar,
+    toggleRightSidebar,
+  } = useViewStore();
   const { issues, autoRepairDuplicates } = useValidationStore();
   const [activeSidebarTab, setActiveSidebarTab] = useState<"rings" | "validation">("rings");
   const [showExportModal, setShowExportModal] = useState(false);
+
+  // Responsive auto-collapse and auto-restore on window resize
+  const prevWidthRef = useRef<number>(typeof window !== "undefined" ? window.innerWidth : 1200);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const w = window.innerWidth;
+      const prevW = prevWidthRef.current;
+      prevWidthRef.current = w;
+
+      if (w < 960 && prevW >= 960) {
+        useViewStore.getState().setRightSidebarOpen(false);
+      }
+      if (w < 640 && prevW >= 640) {
+        useViewStore.getState().setLeftSidebarOpen(false);
+      }
+
+      if (w >= 960 && prevW < 960) {
+        useViewStore.getState().setRightSidebarOpen(true);
+        useViewStore.getState().setLeftSidebarOpen(true);
+      } else if (w >= 640 && prevW < 640) {
+        useViewStore.getState().setLeftSidebarOpen(true);
+      }
+    };
+
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  // Ring Card Drag & Drop reordering state
+  const [draggedCardIdx, setDraggedCardIdx] = useState<number | null>(null);
+  const [dragOverCardIdx, setDragOverCardIdx] = useState<number | null>(null);
+
+  // Dashboard routing states
+  const [showDashboard, setShowDashboard] = useState(true);
+  const [hasActiveProjectEdited, setHasActiveProjectEdited] = useState(false);
+  const [hasAutosave, setHasAutosave] = useState(false);
+  const [autosaveMetadata, setAutosaveMetadata] = useState<{ name: string; updatedAt: string } | null>(null);
+  const [isAnimatingIntro, setIsAnimatingIntro] = useState(false);
+
+  // Load autosave manifest on mount
+  useEffect(() => {
+    const saved = loadAutosave();
+    if (saved) {
+      setHasAutosave(true);
+      setAutosaveMetadata({
+        name: saved.metadata.name,
+        updatedAt: saved.metadata.updatedAt || new Date().toISOString(),
+      });
+    }
+  }, []);
+
+  // Sync to autosave when project changes
+  useEffect(() => {
+    if (hasActiveProjectEdited) {
+      const timer = setTimeout(() => {
+        saveAutosave(project);
+        setHasAutosave(true);
+        setAutosaveMetadata({
+          name: project.metadata.name,
+          updatedAt: new Date().toISOString(),
+        });
+      }, 1000); // debounce 1 second to avoid excessive writes
+      return () => clearTimeout(timer);
+    }
+  }, [project, hasActiveProjectEdited]);
+
+  // Sync backup every 5 history stack changes
+  const lastBackupCount = useRef(0);
+  useEffect(() => {
+    if (past.length > 0 && past.length !== lastBackupCount.current) {
+      if (past.length % 5 === 0) {
+        saveBackup(project);
+      }
+      lastBackupCount.current = past.length;
+    }
+  }, [past.length, project]);
 
   const handleInspectIssue = (entityId?: string, entityType?: string) => {
     if (!entityId) return;
@@ -300,27 +185,100 @@ export default function App() {
 
   const startAnglesRef = useRef<Record<string, number>>({});
 
-  // Seed demo project if workspace is empty
-  useEffect(() => {
-    const children = project.mechanism.children || [];
-    if (children.length === 0) {
-      setProject(JSON.parse(JSON.stringify(DEMO_VOLVELLE)));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   const rings = (project.mechanism.children || []).filter(
     (c) => c.type === "ring"
   ) as RingNode[];
+
+  // Reverse list so top-most ring is at index 0 in the UI card stack
+  const uiRings = useMemo(() => {
+    return [...rings].reverse();
+  }, [rings]);
+
+  // Automatically select the top-most ring on canvas load or if activeRingId is null/invalid
+  useEffect(() => {
+    if (showDashboard) return;
+    const topRing = uiRings[0];
+    if (!topRing) return;
+
+    const isCurrentRingValid = activeRingId && rings.some((r) => r.id === activeRingId);
+    if (!isCurrentRingValid) {
+      setActiveRingId(topRing.id);
+    }
+  }, [showDashboard, uiRings, activeRingId, rings, setActiveRingId]);
+
+  const handleCardDragStart = (e: React.DragEvent, uiIdx: number) => {
+    e.dataTransfer.setData("text/plain", uiIdx.toString());
+    e.dataTransfer.effectAllowed = "move";
+    setDraggedCardIdx(uiIdx);
+  };
+
+  const handleCardDragOver = (e: React.DragEvent, uiIdx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (dragOverCardIdx !== uiIdx) {
+      setDragOverCardIdx(uiIdx);
+    }
+  };
+
+  const handleCardDrop = (e: React.DragEvent, targetUiIdx: number) => {
+    e.preventDefault();
+    setDragOverCardIdx(null);
+    const sourceUiIdx =
+      draggedCardIdx ?? parseInt(e.dataTransfer.getData("text/plain"), 10);
+    setDraggedCardIdx(null);
+
+    if (isNaN(sourceUiIdx) || sourceUiIdx === targetUiIdx) return;
+
+    const total = rings.length;
+    const fromChildrenIdx = total - 1 - sourceUiIdx;
+    const toChildrenIdx = total - 1 - targetUiIdx;
+
+    const cmd = new ReorderRingsCommand(fromChildrenIdx, toChildrenIdx);
+    executeCommand(cmd);
+  };
+
+  const handleCardDragEnd = () => {
+    setDraggedCardIdx(null);
+    setDragOverCardIdx(null);
+  };
 
   // Undo / Redo controls
   const handleUndo = () => undo();
   const handleRedo = () => redo();
 
-  // Load Demo manual button
-  const handleLoadDemo = () => {
-    setProject(JSON.parse(JSON.stringify(DEMO_VOLVELLE)));
+  // Template picking / loading callbacks
+  const handleSelectTemplate = (template: Template) => {
+    const fresh = cloneProjectWithNewIds(template.project, template.manifest.id, template.manifest.version);
+    setProject(fresh);
     useProjectStore.getState().clearHistory();
+    setHasActiveProjectEdited(true);
+    setShowDashboard(false);
+    setIsAnimatingIntro(true);
+  };
+
+  const handleLoadProject = (projectJson: string) => {
+    const loaded = JSON.parse(projectJson) as Project;
+    setProject(loaded);
+    useProjectStore.getState().clearHistory();
+    setHasActiveProjectEdited(true);
+    setShowDashboard(false);
+    setIsAnimatingIntro(true);
+  };
+
+  const handleResumeAutosave = () => {
+    const saved = loadAutosave();
+    if (saved) {
+      setProject(saved);
+      useProjectStore.getState().clearHistory();
+      setHasActiveProjectEdited(true);
+      setShowDashboard(false);
+      setIsAnimatingIntro(true);
+    }
+  };
+
+  const handleResumeActiveProject = () => {
+    setShowDashboard(false);
+    setIsAnimatingIntro(true);
   };
 
   // Add / Remove Rings
@@ -342,8 +300,33 @@ export default function App() {
     executeCommand(cmd);
   };
 
+  const [ringPendingDelete, setRingPendingDelete] = useState<RingNode | null>(null);
+
   const handleDeleteRing = (ring: RingNode) => {
-    const cmd = new DeleteRingCommand(ring);
+    const skipWarning = localStorage.getItem("URANIA_SKIP_DELETE_LAYER_CONFIRM") === "true";
+    if (skipWarning) {
+      executeCommand(new DeleteRingCommand(ring));
+    } else {
+      setRingPendingDelete(ring);
+    }
+  };
+
+  const handleConfirmDeleteRing = (dontAskAgain: boolean) => {
+    if (!ringPendingDelete) return;
+    if (dontAskAgain) {
+      localStorage.setItem("URANIA_SKIP_DELETE_LAYER_CONFIRM", "true");
+    }
+    executeCommand(new DeleteRingCommand(ringPendingDelete));
+    setRingPendingDelete(null);
+  };
+
+  const handleToggleRingVisibility = (ring: RingNode) => {
+    const isCurrentlyHidden = ring.visible === false;
+    const updatedRing: RingNode = {
+      ...ring,
+      visible: isCurrentlyHidden ? true : false,
+    };
+    const cmd = new UpdateNodeCommand(ring.id, ring, updatedRing);
     executeCommand(cmd);
   };
 
@@ -409,347 +392,486 @@ export default function App() {
         </div>
 
         <div className="header-actions">
-          {/* History Stack Controls */}
-          <div className="history-controls">
-            <button
-              onClick={handleUndo}
-              disabled={past.length === 0}
-              title="Undo"
-              className="action-btn"
-            >
-              <Undo2 size={16} />
-              <span className="badge">{past.length}</span>
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={future.length === 0}
-              title="Redo"
-              className="action-btn"
-            >
-              <Redo2 size={16} />
-              <span className="badge">{future.length}</span>
-            </button>
-          </div>
+          {showDashboard ? (
+            hasActiveProjectEdited && (
+              <button onClick={() => setShowDashboard(false)} className="btn btn-primary">
+                Back to Editor
+                <ArrowRight size={14} />
+              </button>
+            )
+          ) : (
+            <>
+              <button
+                onClick={() => setShowDashboard(true)}
+                className="home-nav-btn"
+                title="Go to Dashboard"
+              >
+                <Home size={14} />
+                <span>Home</span>
+              </button>
 
-          <button onClick={handleLoadDemo} className="btn btn-secondary">
-            <RotateCw size={14} />
-            Reset Demo
-          </button>
+              {/* History Stack Controls */}
+              <div className="history-controls">
+                <button
+                  onClick={handleUndo}
+                  disabled={past.length === 0}
+                  title="Undo"
+                  className="action-btn"
+                >
+                  <Undo2 size={16} />
+                  <span className="badge">{past.length}</span>
+                </button>
+                <button
+                  onClick={handleRedo}
+                  disabled={future.length === 0}
+                  title="Redo"
+                  className="action-btn"
+                >
+                  <Redo2 size={16} />
+                  <span className="badge">{future.length}</span>
+                </button>
+              </div>
 
-          <button onClick={() => setShowExportModal(true)} className="btn btn-secondary">
-            <FileCode size={14} />
-            Export Project
-          </button>
-
-          <button onClick={handleAddRing} className="btn btn-primary">
-            <Plus size={14} />
-            Add Ring
-          </button>
+              <button onClick={() => setShowExportModal(true)} className="btn btn-secondary">
+                <FileCode size={14} />
+                Export Project
+              </button>
+            </>
+          )}
         </div>
       </header>
 
-      {/* Main Workspace split */}
-      <main className="app-main">
-        {/* Left Control Panel */}
-        <aside className="sidebar">
-          {/* Volvelle Details Card */}
-          <div className="sidebar-section">
-            <h3 className="section-title">
-              <Info size={14} />
-              Mechanism Metadata
-            </h3>
-            <div className="info-card">
-              <label>Project Name</label>
-              <input
-                type="text"
-                value={project.metadata.name}
-                onChange={(e) =>
-                  setProject({
-                    ...project,
-                    metadata: { ...project.metadata, name: e.target.value },
-                  })
-                }
-              />
-              <label>Description</label>
-              <textarea
-                value={project.metadata.description}
-                rows={2}
-                onChange={(e) =>
-                  setProject({
-                    ...project,
-                    metadata: {
-                      ...project.metadata,
-                      description: e.target.value,
-                    },
-                  })
-                }
-              />
-            </div>
-          </div>
-
-          {/* Tabbed Concentric Ring Controls & Validation Issues Panel */}
-          <div className="sidebar-section fill-section">
-            <div className="sidebar-tabs">
-              <button
-                className={`tab-btn ${activeSidebarTab === "rings" ? "active" : ""}`}
-                onClick={() => setActiveSidebarTab("rings")}
-              >
-                <Sliders size={13} />
-                Rings
-              </button>
-              <button
-                className={`tab-btn ${activeSidebarTab === "validation" ? "active" : ""}`}
-                onClick={() => setActiveSidebarTab("validation")}
-              >
-                <AlertTriangle size={13} />
-                Issues
-                {issues.length > 0 && (
-                  <span className={`tab-badge ${issues.some(i => i.severity === "error") ? "has-errors" : "only-warnings"}`}>
-                    {issues.length}
-                  </span>
-                )}
-              </button>
+      {/* Main Workspace split / Dashboard */}
+      {showDashboard ? (
+        <Dashboard
+          onSelectTemplate={handleSelectTemplate}
+          onLoadProject={handleLoadProject}
+          onResumeAutosave={handleResumeAutosave}
+          onResumeActiveProject={handleResumeActiveProject}
+          hasActiveProject={hasActiveProjectEdited}
+          hasAutosave={hasAutosave}
+          autosaveMetadata={autosaveMetadata}
+        />
+      ) : (
+        <main className="app-main">
+          {/* Left Control Panel */}
+          <aside className={`sidebar ${isLeftSidebarOpen ? "" : "collapsed"}`}>
+            {/* Volvelle Details Card */}
+            <div className="sidebar-section">
+              <h3 className="section-title">
+                <Info size={14} />
+                Mechanism Metadata
+              </h3>
+              <div className="info-card">
+                <label>Project Name</label>
+                <input
+                  type="text"
+                  value={project.metadata.name}
+                  onChange={(e) =>
+                    setProject({
+                      ...project,
+                      metadata: { ...project.metadata, name: e.target.value },
+                    })
+                  }
+                />
+                <label>Description</label>
+                <textarea
+                  value={project.metadata.description}
+                  rows={2}
+                  onChange={(e) =>
+                    setProject({
+                      ...project,
+                      metadata: {
+                        ...project.metadata,
+                        description: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
             </div>
 
-            {activeSidebarTab === "rings" ? (
-              <div className="tab-panel-content">
-                {/* Selection Breadcrumb info bar */}
-                {selectedItems.length > 0 && (
-                  <div className="selection-info-bar">
-                    <span className="info-bar-title">Selected ({selectedItems.length}):</span>
-                    <div className="selected-tags">
-                      {selectedItems.map((item) => {
-                        const name =
-                          resolvedNodes.find((n) => n.id === item.id)?.name ||
-                          item.id.substring(0, 4);
-                        const isActive = activeItem?.id === item.id;
+            {/* Tabbed Concentric Ring Controls & Validation Issues Panel */}
+            <div className="sidebar-section fill-section">
+              <div className="sidebar-tabs">
+                <button
+                  className={`tab-btn ${activeSidebarTab === "rings" ? "active" : ""}`}
+                  onClick={() => setActiveSidebarTab("rings")}
+                >
+                  <Sliders size={13} />
+                  Rings
+                </button>
+                <button
+                  className={`tab-btn ${activeSidebarTab === "validation" ? "active" : ""}`}
+                  onClick={() => setActiveSidebarTab("validation")}
+                >
+                  <AlertTriangle size={13} />
+                  Issues
+                  {issues.length > 0 && (
+                    <span className={`tab-badge ${issues.some(i => i.severity === "error") ? "has-errors" : "only-warnings"}`}>
+                      {issues.length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {activeSidebarTab === "rings" ? (
+                <div className="tab-panel-content">
+                  {/* Relocated Rings Stack Header Bar with Add Ring Button */}
+                  <div className="rings-header-bar">
+                    <span className="rings-header-title">
+                      <Layers size={13} />
+                      Rings Stack ({rings.length})
+                    </span>
+                    <button
+                      onClick={handleAddRing}
+                      className="btn btn-sm btn-primary"
+                      title="Add a new concentric ring layer"
+                    >
+                      <Plus size={13} />
+                      Add Ring
+                    </button>
+                  </div>
+
+                  {/* Selection Breadcrumb info bar */}
+                  {selectedItems.length > 0 && (
+                    <div className="selection-info-bar">
+                      <span className="info-bar-title">Selected ({selectedItems.length}):</span>
+                      <div className="selected-tags">
+                        {selectedItems.map((item) => {
+                          const name =
+                            resolvedNodes.find((n) => n.id === item.id)?.name ||
+                            item.id.substring(0, 4);
+                          const isActive = activeItem?.id === item.id;
+                          return (
+                            <span
+                              key={item.id}
+                              className={`selection-tag ${isActive ? "active-tag" : ""}`}
+                              onClick={() => selectItem(item.id, item.type, false)}
+                            >
+                              {name}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rings-list">
+                    {uiRings.length === 0 ? (
+                      <div className="empty-state">
+                        <Layers size={24} />
+                        <p>No active rings found</p>
+                        <button onClick={handleAddRing} className="btn btn-sm btn-primary">
+                          Create One
+                        </button>
+                      </div>
+                    ) : (
+                      uiRings.map((ring, uiIdx) => {
+                        const isSelected = selectedItems.some((item) => item.id === ring.id);
+                        const isFocused = activeRingId === ring.id;
+                        const isDragging = draggedCardIdx === uiIdx;
+                        const isDragOver = dragOverCardIdx === uiIdx;
+                        const ringColorIdx = rings.length - 1 - uiIdx;
+
                         return (
-                          <span
-                            key={item.id}
-                            className={`selection-tag ${isActive ? "active-tag" : ""}`}
-                            onClick={() => selectItem(item.id, item.type, false)}
+                          <div
+                            key={ring.id}
+                            draggable
+                            onDragStart={(e) => handleCardDragStart(e, uiIdx)}
+                            onDragOver={(e) => handleCardDragOver(e, uiIdx)}
+                            onDrop={(e) => handleCardDrop(e, uiIdx)}
+                            onDragEnd={handleCardDragEnd}
+                            className={`ring-control-card ${isSelected ? "selected" : ""} ${
+                              isFocused ? "focused-ring" : ""
+                            } ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""} ${
+                              ring.visible === false ? "is-hidden" : ""
+                            }`}
+                            onClick={(e) => {
+                              const target = e.target as HTMLElement;
+                              if (
+                                target.tagName !== "INPUT" &&
+                                target.tagName !== "TEXTAREA" &&
+                                target.tagName !== "BUTTON" &&
+                                !target.closest("button")
+                              ) {
+                                selectItem(
+                                  ring.id,
+                                  "ring",
+                                  e.shiftKey || e.ctrlKey || e.metaKey
+                                );
+                                setActiveRingId(ring.id);
+                              }
+                            }}
                           >
-                            {name}
-                          </span>
+                            <div className="card-header">
+                              <span className="drag-handle" title="Drag to reorder layer stack">
+                                <GripVertical size={14} />
+                              </span>
+                              <span
+                                className="ring-index"
+                                style={{
+                                  backgroundColor: RING_COLORS[ringColorIdx % RING_COLORS.length],
+                                  color: "#fff",
+                                }}
+                                title={uiIdx === 0 ? "Top-most Ring Layer" : uiIdx === uiRings.length - 1 ? "Base Ring Layer" : `Ring Layer #${uiIdx + 1}`}
+                              >
+                                #{uiIdx + 1}
+                              </span>
+                              <input
+                                type="text"
+                                className="ring-name-input"
+                                value={ring.name || ""}
+                                onChange={(e) => {
+                                  const name = e.target.value;
+                                  setProject({
+                                    ...project,
+                                    mechanism: {
+                                      ...project.mechanism,
+                                      children: (project.mechanism.children || []).map((c) =>
+                                        c.id === ring.id ? { ...c, name } : c
+                                      ),
+                                    },
+                                  });
+                                }}
+                              />
+                              <div className="card-header-actions">
+                                <button
+                                  onClick={() => handleToggleRingVisibility(ring)}
+                                  className={`toggle-visible-btn ${ring.visible === false ? "hidden-layer" : ""}`}
+                                  title={ring.visible === false ? "Show Ring Layer" : "Hide Ring Layer"}
+                                >
+                                  {ring.visible === false ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </button>
+                                <button
+                                  onClick={() => handleDeleteRing(ring)}
+                                  className="delete-btn"
+                                  title="Delete Ring"
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+
+                            <div className="card-body">
+                              {/* Active Rotation Control Slider */}
+                              <div className="control-row">
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: "4px" }}>
+                                  <label style={{ margin: 0 }}>Rotation Angle</label>
+                                  <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                                    <input
+                                      type="number"
+                                      step="any"
+                                      min="0"
+                                      max="360"
+                                      className="ring-rotation-number-input"
+                                      style={{
+                                        width: "60px",
+                                        padding: "2px 4px",
+                                        fontSize: "11px",
+                                        textAlign: "right",
+                                        backgroundColor: "#0b0c0f",
+                                        border: "1px solid #232530",
+                                        color: "#f8fafc",
+                                        borderRadius: "4px",
+                                      }}
+                                      value={ring.rotation ?? 0}
+                                      onFocus={() => handleRotationStart(ring.id, ring.rotation)}
+                                      onChange={(e) => {
+                                        const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
+                                        if (!isNaN(val)) {
+                                          handleRotationChange(ring.id, val);
+                                        }
+                                      }}
+                                      onBlur={(e) => {
+                                        const val = parseFloat(e.target.value) || 0;
+                                        handleRotationEnd(ring.id, val);
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") {
+                                          e.currentTarget.blur();
+                                        }
+                                      }}
+                                    />
+                                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>°</span>
+                                  </div>
+                                </div>
+                                <input
+                                  type="range"
+                                  min="0"
+                                  max="360"
+                                  step="1"
+                                  value={ring.rotation}
+                                  onMouseDown={() =>
+                                    handleRotationStart(ring.id, ring.rotation)
+                                  }
+                                  onChange={(e) =>
+                                    handleRotationChange(ring.id, parseFloat(e.target.value))
+                                  }
+                                  onMouseUp={(e) =>
+                                    handleRotationEnd(
+                                      ring.id,
+                                      parseFloat((e.target as HTMLInputElement).value)
+                                    )
+                                  }
+                                />
+                              </div>
+
+                              {/* Dimensional Boundary Controllers */}
+                              <div className="control-double-row">
+                                <div>
+                                  <label>Inner Radius</label>
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    max={ring.outerRadius - 5}
+                                    value={ring.innerRadius}
+                                    onChange={(e) =>
+                                      handleRadiusChange(
+                                        ring.id,
+                                        "innerRadius",
+                                        Math.max(0, parseInt(e.target.value) || 0)
+                                      )
+                                    }
+                                  />
+                                </div>
+                                <div>
+                                  <label>Outer Radius</label>
+                                  <input
+                                    type="number"
+                                    min={ring.innerRadius + 5}
+                                    max="500"
+                                    value={ring.outerRadius}
+                                    onChange={(e) =>
+                                      handleRadiusChange(
+                                        ring.id,
+                                        "outerRadius",
+                                        Math.max(0, parseInt(e.target.value) || 0)
+                                      )
+                                    }
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="tab-panel-content">
+                  {issues.length === 0 ? (
+                    <div className="validation-empty-state">
+                      <div className="success-icon">✓</div>
+                      <p>No issues detected!</p>
+                      <span className="subtitle">Your circular mechanism structure is completely valid.</span>
+                    </div>
+                  ) : (
+                    <div className="issues-list">
+                      {issues.map((issue) => {
+                        const isError = issue.severity === "error";
+                        const isWarning = issue.severity === "warning";
+                        return (
+                          <div
+                            key={issue.id}
+                            className={`issue-card ${issue.severity}`}
+                            onClick={() => handleInspectIssue(issue.entityId, issue.entityType)}
+                          >
+                            <div className="issue-card-header">
+                              <span className={`issue-severity-badge ${issue.severity}`}>
+                                {isError ? <XCircle size={11} /> : isWarning ? <AlertTriangle size={11} /> : <Info size={11} />}
+                                {issue.severity}
+                              </span>
+                              <span className="issue-code">{issue.code}</span>
+                            </div>
+                            <p className="issue-message">{issue.message}</p>
+                            {issue.code === "DUPLICATE_UUID" && (
+                              <button
+                                className="btn btn-sm btn-repair"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  autoRepairDuplicates();
+                                }}
+                              >
+                                Auto-Repair Duplicates
+                              </button>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
-                  </div>
-                )}
-                <div className="rings-list">
-                  {rings.length === 0 ? (
-                    <div className="empty-state">
-                      <Layers size={24} />
-                      <p>No active rings found</p>
-                      <button onClick={handleAddRing} className="btn btn-sm btn-primary">
-                        Create One
-                      </button>
-                    </div>
-                  ) : (
-                    rings.map((ring, idx) => {
-                      const isSelected = selectedItems.some((item) => item.id === ring.id);
-                      const isFocused = activeRingId === ring.id;
-                      return (
-                        <div
-                          key={ring.id}
-                          className={`ring-control-card ${isSelected ? "selected" : ""} ${
-                            isFocused ? "focused-ring" : ""
-                          }`}
-                          onClick={(e) => {
-                            const target = e.target as HTMLElement;
-                            if (
-                              target.tagName !== "INPUT" &&
-                              target.tagName !== "TEXTAREA" &&
-                              target.tagName !== "BUTTON" &&
-                              !target.closest("button")
-                            ) {
-                              selectItem(
-                                ring.id,
-                                "ring",
-                                e.shiftKey || e.ctrlKey || e.metaKey
-                              );
-                              setActiveRingId(ring.id);
-                            }
-                          }}
-                        >
-                        <div className="card-header">
-                          <span className="ring-index">#{rings.length - idx}</span>
-                          <input
-                            type="text"
-                            className="ring-name-input"
-                            value={ring.name || ""}
-                            onChange={(e) => {
-                              const name = e.target.value;
-                              setProject({
-                                ...project,
-                                mechanism: {
-                                  ...project.mechanism,
-                                  children: (project.mechanism.children || []).map((c) =>
-                                    c.id === ring.id ? { ...c, name } : c
-                                  ),
-                                },
-                              });
-                            }}
-                          />
-                          <button
-                            onClick={() => handleDeleteRing(ring)}
-                            className="delete-btn"
-                            title="Delete Ring"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-
-                        <div className="card-body">
-                          {/* Active Rotation Control Slider */}
-                          <div className="control-row">
-                            <label>
-                              Rotation: <span>{Math.round(ring.rotation)}°</span>
-                            </label>
-                            <input
-                              type="range"
-                              min="0"
-                              max="360"
-                              value={ring.rotation}
-                              onMouseDown={() =>
-                                handleRotationStart(ring.id, ring.rotation)
-                              }
-                              onChange={(e) =>
-                                handleRotationChange(ring.id, parseFloat(e.target.value))
-                              }
-                              onMouseUp={(e) =>
-                                handleRotationEnd(
-                                  ring.id,
-                                  parseFloat((e.target as HTMLInputElement).value)
-                                )
-                              }
-                            />
-                          </div>
-
-                          {/* Dimensional Boundary Controllers */}
-                          <div className="control-double-row">
-                            <div>
-                              <label>Inner Radius</label>
-                              <input
-                                type="number"
-                                min="0"
-                                max={ring.outerRadius - 5}
-                                value={ring.innerRadius}
-                                onChange={(e) =>
-                                  handleRadiusChange(
-                                    ring.id,
-                                    "innerRadius",
-                                    Math.max(0, parseInt(e.target.value) || 0)
-                                  )
-                                }
-                              />
-                            </div>
-                            <div>
-                              <label>Outer Radius</label>
-                              <input
-                                type="number"
-                                min={ring.innerRadius + 5}
-                                max="500"
-                                value={ring.outerRadius}
-                                onChange={(e) =>
-                                  handleRadiusChange(
-                                    ring.id,
-                                    "outerRadius",
-                                    Math.max(0, parseInt(e.target.value) || 0)
-                                  )
-                                }
-                              />
-                            </div>
-                          </div>
-                        </div>
-                        </div>
-                      );
-                    })
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="tab-panel-content">
-                {issues.length === 0 ? (
-                  <div className="validation-empty-state">
-                    <div className="success-icon">✓</div>
-                    <p>No issues detected!</p>
-                    <span className="subtitle">Your circular mechanism structure is completely valid.</span>
-                  </div>
-                ) : (
-                  <div className="issues-list">
-                    {issues.map((issue) => {
-                      const isError = issue.severity === "error";
-                      const isWarning = issue.severity === "warning";
-                      return (
-                        <div
-                          key={issue.id}
-                          className={`issue-card ${issue.severity}`}
-                          onClick={() => handleInspectIssue(issue.entityId, issue.entityType)}
-                        >
-                          <div className="issue-card-header">
-                            <span className={`issue-severity-badge ${issue.severity}`}>
-                              {isError ? <XCircle size={11} /> : isWarning ? <AlertTriangle size={11} /> : <Info size={11} />}
-                              {issue.severity}
-                            </span>
-                            <span className="issue-code">{issue.code}</span>
-                          </div>
-                          <p className="issue-message">{issue.message}</p>
-                          {issue.code === "DUPLICATE_UUID" && (
-                            <button
-                              className="btn btn-sm btn-repair"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                autoRepairDuplicates();
-                              }}
-                            >
-                              Auto-Repair Duplicates
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Quick Help Card */}
-          <div className="sidebar-section footer-info">
-            <div className="help-box">
-              <h4>
-                <FileCode size={13} /> Canvas Interaction
-              </h4>
-              <ul>
-                <li>
-                  <strong>Scroll Wheel</strong>: Logarithmic Zoom
-                </li>
-                <li>
-                  <strong>Spacebar + Drag</strong>: Pan Viewport
-                </li>
-                <li>
-                  <strong>Middle Mouse Drag</strong>: Pan Viewport
-                </li>
-              </ul>
+              )}
             </div>
-          </div>
-        </aside>
 
-        {/* Viewport canvas workspace */}
-        <section className="viewport-container">
-          <CanvasWorkspace />
-        </section>
+            {/* Quick Help Card */}
+            <div className="sidebar-section footer-info">
+              <div className="help-box">
+                <h4>
+                  <FileCode size={13} /> Canvas Interaction
+                </h4>
+                <ul>
+                  <li>
+                    <strong>Scroll Wheel</strong>: Logarithmic Zoom
+                  </li>
+                  <li>
+                    <strong>Spacebar + Drag</strong>: Pan Viewport
+                  </li>
+                  <li>
+                    <strong>Middle Mouse Drag</strong>: Pan Viewport
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </aside>
 
-        {/* Right Properties Inspector Panel */}
-        <InspectorPanel />
-      </main>
+          {/* Viewport canvas workspace */}
+          <section className="viewport-container">
+            {/* Left Sidebar Toggle Seam Handle */}
+            <button
+              className="sidebar-toggle-tab left-toggle"
+              onClick={toggleLeftSidebar}
+              title={isLeftSidebarOpen ? "Collapse Left Sidebar" : "Expand Left Sidebar"}
+            >
+              {isLeftSidebarOpen ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            </button>
+
+            <CanvasWorkspace />
+
+            {/* Right Sidebar Toggle Seam Handle */}
+            <button
+              className="sidebar-toggle-tab right-toggle"
+              onClick={toggleRightSidebar}
+              title={isRightSidebarOpen ? "Collapse Inspector Panel" : "Expand Inspector Panel"}
+            >
+              {isRightSidebarOpen ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          </section>
+
+          {/* Right Properties Inspector Panel */}
+          <InspectorPanel onDeleteRing={handleDeleteRing} />
+        </main>
+      )}
 
       {showExportModal && (
         <ExportModal
           project={project}
           onClose={() => setShowExportModal(false)}
         />
+      )}
+
+      {ringPendingDelete && (
+        <DeleteLayerModal
+          ring={ringPendingDelete}
+          onConfirm={handleConfirmDeleteRing}
+          onCancel={() => setRingPendingDelete(null)}
+        />
+      )}
+
+      {isAnimatingIntro && (
+        <IntroLoader onComplete={() => setIsAnimatingIntro(false)} />
       )}
     </div>
   );

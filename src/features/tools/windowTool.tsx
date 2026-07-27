@@ -3,7 +3,7 @@ import { Rect, Circle, RegularPolygon, Group } from "react-konva";
 import type { Tool, ToolContext } from "./toolTypes";
 import { resolveProject } from "../runtime/mechanismEngine";
 import { Matrix2D } from "../../shared/utils/matrix";
-import { CreateNodeCommand } from "../project/commands";
+import { CreateNodeCommand, BatchCommand } from "../project/commands";
 import { useToolStore } from "./toolStore";
 
 function generateUniqueId(type: string): string {
@@ -135,7 +135,7 @@ export const createWindowTool = (windowShapeType: "circle" | "rectangle" | "poly
           transform: {
             x: localCenterX,
             y: localCenterY,
-            rotation: 0,
+            rotation: -rotation,
             scaleX: 1,
             scaleY: 1,
           },
@@ -148,7 +148,42 @@ export const createWindowTool = (windowShapeType: "circle" | "rectangle" | "poly
           export: { artwork: false, cut: true, fold: false },
         };
 
-        context.executeCommand(new CreateNodeCommand(activeRing.id, newWindowNode));
+        const sym = useToolStore.getState().symmetryCount || 1;
+        if (sym > 1) {
+          const step = 360 / sym;
+          const origX = newWindowNode.transform.x;
+          const origY = newWindowNode.transform.y;
+          const origRot = newWindowNode.transform.rotation;
+          const groupId = `symgroup-${Math.random().toString(36).substring(2, 9)}`;
+
+          const commands = [];
+          for (let i = 0; i < sym; i++) {
+            const angleRad = (i * step * Math.PI) / 180;
+            const cosA = Math.cos(angleRad);
+            const sinA = Math.sin(angleRad);
+
+            const rx = origX * cosA - origY * sinA;
+            const ry = origX * sinA + origY * cosA;
+            const rRot = origRot + i * step;
+
+            const symNode = JSON.parse(JSON.stringify(newWindowNode));
+            symNode.id = generateUniqueId("window");
+            if (symNode.shape) {
+              symNode.shape.id = generateUniqueId(symNode.shape.type);
+            }
+            symNode.transform.x = rx;
+            symNode.transform.y = ry;
+            symNode.transform.rotation = rRot;
+            symNode.symmetryGroupId = groupId;
+            symNode.symmetryIndex = i;
+            symNode.symmetryCount = sym;
+
+            commands.push(new CreateNodeCommand(activeRing.id, symNode));
+          }
+          context.executeCommand(new BatchCommand(commands, `Symmetrical Window Placement (${sym}x)`));
+        } else {
+          context.executeCommand(new CreateNodeCommand(activeRing.id, newWindowNode));
+        }
 
         if (!useToolStore.getState().isToolLocked) {
           useToolStore.getState().setActiveTool("select");
@@ -180,40 +215,71 @@ export const createWindowTool = (windowShapeType: "circle" | "rectangle" | "poly
         const dy = localPointer.y - localStart.y;
         const dist = Math.sqrt(dx * dx + dy * dy);
 
-        return (
-          <Group x={x} y={y} rotation={rotation} scaleX={scaleX} scaleY={scaleY}>
-            {windowShapeType === "rectangle" && (
-              <Rect
-                x={(localStart.x + localPointer.x) / 2 - Math.abs(dx) / 2}
-                y={(localStart.y + localPointer.y) / 2 - Math.abs(dy) / 2}
-                width={Math.abs(dx)}
-                height={Math.abs(dy)}
-                stroke="#10b981"
-                strokeWidth={1}
-                dash={[4, 4]}
-              />
-            )}
-            {windowShapeType === "circle" && (
+        const sym = useToolStore.getState().symmetryCount || 1;
+        const step = 360 / sym;
+
+        const baseLocalCenterX = (localStart.x + localPointer.x) / 2;
+        const baseLocalCenterY = (localStart.y + localPointer.y) / 2;
+
+        const previews = [];
+        for (let i = 0; i < sym; i++) {
+          const angleRad = (i * step * Math.PI) / 180;
+          const cosA = Math.cos(angleRad);
+          const sinA = Math.sin(angleRad);
+          const rRot = -rotation + i * step;
+
+          if (windowShapeType === "rectangle") {
+            const rx = baseLocalCenterX * cosA - baseLocalCenterY * sinA;
+            const ry = baseLocalCenterX * sinA + baseLocalCenterY * cosA;
+            previews.push(
+              <Group key={i} x={rx} y={ry} rotation={rRot}>
+                <Rect
+                  x={-Math.abs(dx) / 2}
+                  y={-Math.abs(dy) / 2}
+                  width={Math.abs(dx)}
+                  height={Math.abs(dy)}
+                  stroke="#10b981"
+                  strokeWidth={1}
+                  dash={[4, 4]}
+                />
+              </Group>
+            );
+          } else if (windowShapeType === "circle") {
+            const rx = localStart.x * cosA - localStart.y * sinA;
+            const ry = localStart.x * sinA + localStart.y * cosA;
+            previews.push(
               <Circle
-                x={localStart.x}
-                y={localStart.y}
+                key={i}
+                x={rx}
+                y={ry}
                 radius={dist}
                 stroke="#10b981"
                 strokeWidth={1}
                 dash={[4, 4]}
               />
-            )}
-            {windowShapeType === "polygon" && (
+            );
+          } else if (windowShapeType === "polygon") {
+            const rx = localStart.x * cosA - localStart.y * sinA;
+            const ry = localStart.x * sinA + localStart.y * cosA;
+            previews.push(
               <RegularPolygon
-                x={localStart.x}
-                y={localStart.y}
+                key={i}
+                x={rx}
+                y={ry}
+                rotation={rRot}
                 sides={context.isShift ? 3 : (useToolStore.getState().toolSettings.polygonSides || 5)}
                 radius={dist}
                 stroke="#10b981"
                 strokeWidth={1}
                 dash={[4, 4]}
               />
-            )}
+            );
+          }
+        }
+
+        return (
+          <Group x={x} y={y} rotation={rotation} scaleX={scaleX} scaleY={scaleY}>
+            {previews}
           </Group>
         );
       } catch {

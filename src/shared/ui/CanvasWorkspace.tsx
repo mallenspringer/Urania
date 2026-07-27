@@ -6,11 +6,14 @@ import { useSelectionStore } from "../../features/selection/selectionStore";
 import { resolveProject } from "../../features/runtime/mechanismEngine";
 import { ResolvedRenderer } from "./ResolvedRenderer";
 import { SelectionHighlights } from "./SelectionHighlights";
-import { useToolStore } from "../../features/tools/toolStore";
+import { CanvasGridOverlay } from "./CanvasGridOverlay";
+import type { BaseNode } from "../../shared/types/project";
+import { useToolStore, useClipboardStore } from "../../features/tools/toolStore";
 import { toolRegistry } from "../../features/tools/toolRegistry";
 import { findHitNode } from "../../features/tools/selectTool";
-import { UpdateNodeCommand } from "../../features/project/commands";
-import { findNodeInTree } from "../../shared/utils/geometry";
+import { UpdateNodeCommand, GroupNodesCommand, UngroupNodesCommand, CreateNodeCommand, DeleteMultipleNodesCommand } from "../../features/project/commands";
+import { findNodeInTree, findParentNode } from "../../shared/utils/geometry";
+import { getArcTextCharPositions } from "../../shared/utils/textGeometry";
 import {
   MousePointer,
   Square,
@@ -19,10 +22,14 @@ import {
   Eye,
   Type,
   Heading,
-  Compass,
-  RotateCw,
   Lock,
   Unlock,
+  Moon,
+  Star,
+  Minus,
+  Spline,
+  Activity,
+  Image as ImageIcon,
 } from "lucide-react";
 
 export const CanvasWorkspace: React.FC = () => {
@@ -36,14 +43,37 @@ export const CanvasWorkspace: React.FC = () => {
   const [localTextValue, setLocalTextValue] = useState("");
   const originalTextRef = useRef("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const { zoom, pan, setZoom, setPan, resetView } = useViewStore();
+  const {
+    zoom,
+    pan,
+    setZoom,
+    setPan,
+    resetView,
+    gridLayer,
+    setGridLayer,
+    gridMode,
+    setGridMode,
+    manualSliceCount,
+    setManualSliceCount,
+    showCircularGuides,
+    toggleCircularGuides,
+    gridLineColorMode,
+    setGridLineColorMode,
+  } = useViewStore();
   const project = useProjectStore((state) => state.project);
-  const { activeRingId } = useSelectionStore();
+  const { activeRingId, selectedItems } = useSelectionStore();
 
   const {
     activeToolId,
     setActiveTool,
+    creationMode,
+    setCreationMode,
+    symmetryCount,
+    setSymmetryCount,
+    radialWarpEnabled,
+    setRadialWarpEnabled,
     isToolLocked,
     setToolLocked,
     previewData,
@@ -58,11 +88,258 @@ export const CanvasWorkspace: React.FC = () => {
   const { editingTextNodeId, setEditingTextNodeId } = useToolStore();
   const { setProject, executeCommand } = useProjectStore();
 
+  const handleGroupAction = () => {
+    const selection = useSelectionStore.getState();
+    const selectedItems = selection.selectedItems;
+    if (selectedItems.length <= 1) return;
+
+    // Verify they share the same parent node in the mechanism tree
+    const parentIds = selectedItems.map((item) => {
+      const parent = findParentNode(project.mechanism, item.id);
+      return parent ? parent.id : null;
+    });
+
+    const uniqueParents = Array.from(new Set(parentIds));
+    if (uniqueParents.length !== 1 || !uniqueParents[0]) {
+      return;
+    }
+
+    const parentId = uniqueParents[0];
+    const selectedNodes = selectedItems
+      .map((item) => findNodeInTree(project.mechanism, item.id))
+      .filter(Boolean) as BaseNode[];
+
+    const count = selectedNodes.length;
+    const sumX = selectedNodes.reduce((sum, n) => sum + n.transform.x, 0);
+    const sumY = selectedNodes.reduce((sum, n) => sum + n.transform.y, 0);
+    const cx = sumX / count;
+    const cy = sumY / count;
+
+    const groupId = `group-${Math.random().toString(36).substring(2, 9)}`;
+    const childrenCopy = selectedNodes.map((n) => {
+      const child = JSON.parse(JSON.stringify(n));
+      child.transform.x -= cx;
+      child.transform.y -= cy;
+      return child;
+    });
+
+    const groupNode: BaseNode = {
+      id: groupId,
+      type: "group",
+      name: `Group_${groupId.substring(6, 10).toUpperCase()}`,
+      visible: true,
+      locked: false,
+      transform: { x: cx, y: cy, rotation: 0, scaleX: 1, scaleY: 1 },
+      children: childrenCopy,
+    };
+
+    executeCommand(new GroupNodesCommand(parentId, selectedItems.map((item) => item.id), groupNode));
+  };
+
+  const handleUngroupAction = () => {
+    const selection = useSelectionStore.getState();
+    const selectedItems = selection.selectedItems;
+    if (selectedItems.length !== 1 || selectedItems[0].type !== "group") return;
+
+    const groupNode = findNodeInTree(project.mechanism, selectedItems[0].id);
+    if (!groupNode || groupNode.type !== "group" || !groupNode.children) return;
+
+    const parent = findParentNode(project.mechanism, groupNode.id);
+    if (!parent) return;
+
+    const childNodes = groupNode.children.map((child: any) => {
+      const childCopy = JSON.parse(JSON.stringify(child));
+      const rotRad = (groupNode.transform.rotation * Math.PI) / 180;
+      const cos = Math.cos(rotRad) * groupNode.transform.scaleX;
+      const sin = Math.sin(rotRad) * groupNode.transform.scaleY;
+
+      const px = child.transform.x * cos - child.transform.y * sin;
+      const py = child.transform.x * sin + child.transform.y * cos;
+
+      childCopy.transform.x = groupNode.transform.x + px;
+      childCopy.transform.y = groupNode.transform.y + py;
+      childCopy.transform.rotation += groupNode.transform.rotation;
+      childCopy.transform.scaleX *= groupNode.transform.scaleX;
+      childCopy.transform.scaleY *= groupNode.transform.scaleY;
+      return childCopy;
+    });
+
+    executeCommand(new UngroupNodesCommand(groupNode.id, parent.id, childNodes));
+  };
+
+  const handleCopyAction = () => {
+    const selection = useSelectionStore.getState();
+    const selectedItems = selection.selectedItems;
+    if (selectedItems.length === 0) return;
+
+    const selectedNodes = selectedItems
+      .map((item) => findNodeInTree(project.mechanism, item.id))
+      .filter(Boolean);
+    
+    useClipboardStore.getState().setClipboard(selectedNodes);
+  };
+
+  const handlePasteAction = () => {
+    const clipboardStore = useClipboardStore.getState();
+    const clipboard = clipboardStore.clipboard;
+    if (!clipboard || clipboard.length === 0) return;
+
+    let targetParentId = activeRingId;
+    if (!targetParentId) {
+      const firstRing = project.mechanism.children?.find((c) => c.type === "ring");
+      if (firstRing) {
+        targetParentId = firstRing.id;
+      } else {
+        targetParentId = project.mechanism.id;
+      }
+    }
+
+    clipboardStore.incrementPasteCount();
+    const count = clipboardStore.pasteCount;
+    const offset = 15 * count;
+
+    const selection = useSelectionStore.getState();
+    selection.clearSelection();
+
+    const cloneNodeStructure = (node: any): any => {
+      const freshId = `${node.type}-${Math.random().toString(36).substring(2, 9)}`;
+      const nodeCopy = JSON.parse(JSON.stringify(node));
+      nodeCopy.id = freshId;
+      if (nodeCopy.name) {
+        if (!nodeCopy.name.endsWith(" Copy")) {
+          nodeCopy.name += " Copy";
+        }
+      }
+      if (nodeCopy.children) {
+        nodeCopy.children = nodeCopy.children.map((child: any) => cloneNodeStructure(child));
+      }
+      return nodeCopy;
+    };
+
+    for (const node of clipboard) {
+      const nodeCopy = cloneNodeStructure(node);
+      nodeCopy.transform.x += offset;
+      nodeCopy.transform.y += offset;
+
+      executeCommand(new CreateNodeCommand(targetParentId, nodeCopy));
+      selection.selectItem(nodeCopy.id, nodeCopy.type, true);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "copy";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const files = Array.from(e.dataTransfer.files);
+    if (files.length > 0) {
+      const imageFiles = files.filter(
+        (f) => f.type === "image/png" || f.type === "image/jpeg" || f.type === "image/svg+xml"
+      );
+      if (imageFiles.length > 0) {
+        const rect = containerRef.current?.getBoundingClientRect();
+        if (rect) {
+          const clientX = e.clientX;
+          const clientY = e.clientY;
+          const dropX = (clientX - rect.left - stageX) / zoom;
+          const dropY = (clientY - rect.top - stageY) / zoom;
+          processImageFiles(imageFiles, { x: dropX, y: dropY });
+        } else {
+          processImageFiles(imageFiles);
+        }
+      }
+    }
+  };
+
+  const handleImageFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      processImageFiles(Array.from(e.target.files));
+    }
+    e.target.value = "";
+  };
+
+  const processImageFiles = (files: File[], customCoords?: { x: number; y: number }) => {
+    let targetParentId = activeRingId;
+    if (!targetParentId) {
+      const firstRing = project.mechanism.children?.find((c) => c.type === "ring");
+      if (firstRing) {
+        targetParentId = firstRing.id;
+      } else {
+        targetParentId = project.mechanism.id;
+      }
+    }
+
+    files.forEach((file) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const assetId = `asset-${Math.random().toString(36).substring(2, 9)}`;
+        
+        const newAsset = {
+          id: assetId,
+          type: file.type === "image/svg+xml" ? ("svg" as const) : ("image" as const),
+          mimeType: file.type,
+          embeddedData: dataUrl,
+        };
+
+        const updatedAssets = [...(project.assets || []), newAsset];
+        setProject({
+          ...project,
+          assets: updatedAssets,
+        });
+
+        const px = customCoords ? customCoords.x : 0;
+        const py = customCoords ? customCoords.y : 0;
+
+        const nodeType = file.type === "image/svg+xml" ? "svgAsset" : "image";
+
+        const img = new window.Image();
+        img.src = dataUrl;
+        img.onload = () => {
+          const naturalWidth = img.naturalWidth;
+          const naturalHeight = img.naturalHeight;
+          const maxDim = 150;
+          let w = 100;
+          let h = 100;
+          if (naturalWidth && naturalHeight) {
+            if (naturalWidth > naturalHeight) {
+              w = maxDim;
+              h = (naturalHeight / naturalWidth) * maxDim;
+            } else {
+              h = maxDim;
+              w = (naturalWidth / naturalHeight) * maxDim;
+            }
+          }
+
+          const newNode: any = {
+            id: `${nodeType}-${Math.random().toString(36).substring(2, 9)}`,
+            type: nodeType,
+            name: file.name.substring(0, file.name.lastIndexOf(".")) || file.name,
+            visible: true,
+            locked: false,
+            transform: { x: px, y: py, rotation: 0, scaleX: 1, scaleY: 1 },
+            assetId: assetId,
+            width: w,
+            height: h,
+            style: {},
+            export: { artwork: true, cut: false, fold: false },
+          };
+
+          executeCommand(new CreateNodeCommand(targetParentId, newNode));
+          useSelectionStore.getState().selectItem(newNode.id, newNode.type, false);
+        };
+      };
+    });
+  };
+
   useEffect(() => {
     if (editingTextNodeId) {
       const node = findNodeInTree(project.mechanism, editingTextNodeId);
       if (node) {
-        const val = node.content || "";
+        const val = node.type === "window" && node.shape ? (node.shape.content || "") : (node.content || "");
         setLocalTextValue(val);
         originalTextRef.current = val;
         setTimeout(() => {
@@ -85,7 +362,11 @@ export const CanvasWorkspace: React.FC = () => {
     const updatedMechanism = JSON.parse(JSON.stringify(project.mechanism));
     const node = findNodeInTree(updatedMechanism, editingTextNodeId!);
     if (node) {
-      node.content = val;
+      if (node.type === "window" && node.shape) {
+        node.shape.content = val;
+      } else {
+        node.content = val;
+      }
       setProject({
         ...project,
         mechanism: updatedMechanism,
@@ -103,7 +384,11 @@ export const CanvasWorkspace: React.FC = () => {
     const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
     const node = findNodeInTree(rolledBackMechanism, editingTextNodeId);
     if (node) {
-      node.content = origVal;
+      if (node.type === "window" && node.shape) {
+        node.shape.content = origVal;
+      } else {
+        node.content = origVal;
+      }
       setProject({
         ...project,
         mechanism: rolledBackMechanism,
@@ -113,7 +398,11 @@ export const CanvasWorkspace: React.FC = () => {
     if (finalVal !== origVal) {
       const originalNode = findNodeInTree(project.mechanism, editingTextNodeId);
       const updatedNode = JSON.parse(JSON.stringify(originalNode));
-      updatedNode.content = finalVal;
+      if (updatedNode.type === "window" && updatedNode.shape) {
+        updatedNode.shape.content = finalVal;
+      } else {
+        updatedNode.content = finalVal;
+      }
 
       executeCommand(new UpdateNodeCommand(editingTextNodeId, originalNode, updatedNode));
     }
@@ -180,6 +469,53 @@ export const CanvasWorkspace: React.FC = () => {
   // Keyboard listeners for space bar, Escape, and shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const isEditingInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA";
+
+      if (!isEditingInput && (e.key === "Delete" || e.key === "Backspace")) {
+        const selected = useSelectionStore.getState().selectedItems;
+        if (selected.length > 0) {
+          e.preventDefault();
+          executeCommand(new DeleteMultipleNodesCommand(selected.map((s: { id: string }) => s.id)));
+        }
+        return;
+      }
+
+      if (!isEditingInput && (e.ctrlKey || e.metaKey)) {
+        if (e.key.toLowerCase() === "z") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            useProjectStore.getState().redo();
+          } else {
+            useProjectStore.getState().undo();
+          }
+          return;
+        }
+        if (e.key.toLowerCase() === "y") {
+          e.preventDefault();
+          useProjectStore.getState().redo();
+          return;
+        }
+        if (e.key.toLowerCase() === "c") {
+          e.preventDefault();
+          handleCopyAction();
+          return;
+        }
+        if (e.key.toLowerCase() === "v") {
+          e.preventDefault();
+          handlePasteAction();
+          return;
+        }
+        if (e.key.toLowerCase() === "g") {
+          e.preventDefault();
+          if (e.shiftKey) {
+            handleUngroupAction();
+          } else {
+            handleGroupAction();
+          }
+          return;
+        }
+      }
+
       if (e.code === "Space") {
         if (
           document.activeElement === document.body ||
@@ -250,12 +586,14 @@ export const CanvasWorkspace: React.FC = () => {
           case "a":
             setActiveTool("create-arcText");
             break;
-          case "g":
-            if (e.shiftKey) {
-              setActiveTool("create-guide-circular");
-            } else {
-              setActiveTool("create-guide-radial");
-            }
+          case "l":
+            setActiveTool("create-line");
+            break;
+          case "b":
+            setActiveTool("create-curve");
+            break;
+          case "u":
+            setActiveTool("create-arc");
             break;
         }
       }
@@ -267,13 +605,59 @@ export const CanvasWorkspace: React.FC = () => {
       }
     };
 
+    const handlePasteEvent = (e: ClipboardEvent) => {
+      const isEditingInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA";
+      if (isEditingInput) return;
+
+      const files: File[] = [];
+
+      // 1. Try to read files from clipboard (e.g. copied files)
+      if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+        for (let i = 0; i < e.clipboardData.files.length; i++) {
+          const file = e.clipboardData.files[i];
+          if (file.type.startsWith("image/") || file.name.endsWith(".svg")) {
+            files.push(file);
+          }
+        }
+      }
+
+      // 2. Fallback to reading items (e.g. screenshots)
+      if (files.length === 0 && e.clipboardData?.items) {
+        for (let i = 0; i < e.clipboardData.items.length; i++) {
+          const item = e.clipboardData.items[i];
+          if (item.kind === "file" && (item.type.startsWith("image/") || item.type === "image/svg+xml")) {
+            const file = item.getAsFile();
+            if (file) {
+              files.push(file);
+            }
+          }
+        }
+      }
+
+      if (files.length > 0) {
+        e.preventDefault();
+        if (currentPointer) {
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            const dropX = (currentPointer.x - stageX) / zoom;
+            const dropY = (currentPointer.y - stageY) / zoom;
+            processImageFiles(files, { x: dropX, y: dropY });
+            return;
+          }
+        }
+        processImageFiles(files);
+      }
+    };
+
     window.addEventListener("keydown", handleKeyDown);
     window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("paste", handlePasteEvent);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("paste", handlePasteEvent);
     };
-  }, [previewData, setPreviewData, setDragStartPos, setActiveTool]);
+  }, [previewData, setPreviewData, setDragStartPos, setActiveTool, currentPointer, stageX, stageY, zoom]);
 
   const handleMouseDown = (e: any) => {
     const isMiddleButton = e.evt.button === 1;
@@ -337,12 +721,39 @@ export const CanvasWorkspace: React.FC = () => {
           const cos = Math.cos(rotRad) * scaleX;
           const sin = Math.sin(rotRad) * scaleY;
 
-          const corners = [
-            { name: "top-left", lx: bx, ly: by },
-            { name: "top-right", lx: bx + width, ly: by },
-            { name: "bottom-left", lx: bx, ly: by + height },
-            { name: "bottom-right", lx: bx + width, ly: by + height },
-          ];
+          let corners = [];
+          if (activeNode.renderData?.isRadialWarp) {
+            const r = activeNode.renderData.radialRadius || 100;
+            const w = activeNode.bounds.width;
+            const h = activeNode.bounds.height;
+            const innerRadius = Math.max(0, r - h / 2);
+            const outerRadius = r + h / 2;
+            const wRad = (w / 2) * Math.PI / 180;
+
+            corners = [
+              { name: "top-left", lx: innerRadius * Math.cos(-wRad), ly: innerRadius * Math.sin(-wRad) },
+              { name: "top-right", lx: innerRadius * Math.cos(wRad), ly: innerRadius * Math.sin(wRad) },
+              { name: "bottom-left", lx: outerRadius * Math.cos(-wRad), ly: outerRadius * Math.sin(-wRad) },
+              { name: "bottom-right", lx: outerRadius * Math.cos(wRad), ly: outerRadius * Math.sin(wRad) },
+              // Side handles
+              { name: "top-mid", lx: innerRadius, ly: 0 },
+              { name: "bottom-mid", lx: outerRadius, ly: 0 },
+              { name: "left-mid", lx: r * Math.cos(-wRad), ly: r * Math.sin(-wRad) },
+              { name: "right-mid", lx: r * Math.cos(wRad), ly: r * Math.sin(wRad) },
+            ];
+          } else {
+            corners = [
+              { name: "top-left", lx: bx, ly: by },
+              { name: "top-right", lx: bx + width, ly: by },
+              { name: "bottom-left", lx: bx, ly: by + height },
+              { name: "bottom-right", lx: bx + width, ly: by + height },
+              // Side handles
+              { name: "top-mid", lx: bx + width / 2, ly: by },
+              { name: "bottom-mid", lx: bx + width / 2, ly: by + height },
+              { name: "left-mid", lx: bx, ly: by + height / 2 },
+              { name: "right-mid", lx: bx + width, ly: by + height / 2 },
+            ];
+          }
 
           for (const corner of corners) {
             const hwx = x + (corner.lx * cos - corner.ly * sin);
@@ -432,6 +843,13 @@ export const CanvasWorkspace: React.FC = () => {
     return null;
   }, [activeToolId, previewData]);
 
+  const getCursorForHandle = (handle: string): string => {
+    if (handle === "top-left" || handle === "bottom-right") return "nwse-resize";
+    if (handle === "top-right" || handle === "bottom-left") return "nesw-resize";
+    if (handle === "top-mid" || handle === "bottom-mid") return "ns-resize";
+    return "ew-resize"; // left-mid or right-mid
+  };
+
   let cursorStyle = activeTool?.cursor || "default";
   if (isPanning) {
     cursorStyle = "grabbing";
@@ -443,12 +861,10 @@ export const CanvasWorkspace: React.FC = () => {
     } else if (previewData?.isDraggingNode) {
       cursorStyle = "move";
     } else if (previewData?.isResizing) {
-      const h = previewData.handle;
-      cursorStyle = (h === "top-left" || h === "bottom-right") ? "nwse-resize" : "nesw-resize";
+      cursorStyle = getCursorForHandle(previewData.handle);
     } else if (hoverState) {
       if (hoverState.handle) {
-        const h = hoverState.handle;
-        cursorStyle = (h === "top-left" || h === "bottom-right") ? "nwse-resize" : "nesw-resize";
+        cursorStyle = getCursorForHandle(hoverState.handle);
       } else if (hoverState.nodeType === "text" || hoverState.nodeType === "arcText" || hoverState.nodeType === "sectorLabel") {
         cursorStyle = "text";
       } else {
@@ -457,21 +873,87 @@ export const CanvasWorkspace: React.FC = () => {
     }
   }
 
-  const toolsList = [
+  const section1Tools = [
     { id: "select", icon: <MousePointer className="h-5 w-5" />, label: "Select (V)" },
-    { id: "create-rectangle", icon: <Square className="h-5 w-5" />, label: "Rectangle (R)" },
-    { id: "create-circle", icon: <CircleIcon className="h-5 w-5" />, label: "Circle (C)" },
-    { id: "create-polygon", icon: <Hexagon className="h-5 w-5" />, label: "Polygon (P)" },
-    { id: "create-window-circle", icon: <Eye className="h-5 w-5" />, label: "Circle Window (W)" },
-    { id: "create-text", icon: <Type className="h-5 w-5" />, label: "Text (T)" },
-    { id: "create-arcText", icon: <Heading className="h-5 w-5" />, label: "Arc Text (A)" },
-    { id: "create-guide-radial", icon: <Compass className="h-5 w-5" />, label: "Radial Guide (G)" },
-    { id: "create-guide-circular", icon: <RotateCw className="h-5 w-5" />, label: "Circular Guide (Shift+G)" },
   ];
+
+  // Tools that can visually deform into arc-slice shapes under Radial Warp.
+  // When warp is enabled, ineligible tools are dimmed to signal the feature
+  // only applies to shapes placed with these tools.
+  const WARP_ELIGIBLE_TOOLS = new Set(["create-rectangle", "create-trapezoid"]);
+
+  const section2Tools = [
+    { id: "create-line", icon: <Minus className="h-5 w-5" />, label: creationMode === "cutout" ? "Line Cutout (L)" : "Line (L)" },
+    { id: "create-curve", icon: <Spline className="h-5 w-5" />, label: creationMode === "cutout" ? "Curve Cutout (B)" : "Bézier Curve (B)" },
+    { id: "create-arc", icon: <Activity className="h-5 w-5" />, label: creationMode === "cutout" ? "Arc Cutout (U)" : "Circular Arc (U)" },
+    { id: "create-rectangle", icon: <Square className="h-5 w-5" />, label: creationMode === "cutout" ? "Rectangle Cutout (R)" : "Rectangle (R)" },
+    { id: "create-circle", icon: <CircleIcon className="h-5 w-5" />, label: creationMode === "cutout" ? "Circle Cutout (C)" : "Circle (C)" },
+    { id: "create-polygon", icon: <Hexagon className="h-5 w-5" />, label: creationMode === "cutout" ? "Polygon Cutout (P)" : "Polygon (P)" },
+    { id: "create-trapezoid", icon: (
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+        <polygon points="7 6 17 6 21 18 3 18" />
+      </svg>
+    ), label: creationMode === "cutout" ? "Trapezoid Cutout" : "Trapezoid" },
+    { id: "create-crescent", icon: <Moon className="h-5 w-5" />, label: creationMode === "cutout" ? "Crescent Cutout" : "Crescent Moon" },
+    { id: "create-star", icon: <Star className="h-5 w-5" />, label: creationMode === "cutout" ? "Star Cutout" : "Star" },
+    { id: "create-text", icon: <Type className="h-5 w-5" />, label: creationMode === "cutout" ? "Text Cutout (T)" : "Text (T)" },
+    { id: "create-arcText", icon: <Heading className="h-5 w-5" />, label: creationMode === "cutout" ? "Arc Text Cutout (A)" : "Arc Text (A)" },
+    { id: "import-image", icon: <ImageIcon className="h-5 w-5" />, label: "Import Image (I)" },
+  ];
+
+  const renderToolButton = (t: { id: string; icon: React.ReactNode; label: string }) => {
+    const isActive = activeToolId === t.id;
+    // When Radial Warp is enabled, only warp-eligible tools are fully lit.
+    // Other creation tools are dimmed to signal they won't produce warped shapes.
+    const isWarpDimmed = radialWarpEnabled && t.id !== "select" && !WARP_ELIGIBLE_TOOLS.has(t.id);
+    return (
+      <button
+        key={t.id}
+        onClick={() => {
+          if (t.id === "import-image") {
+            fileInputRef.current?.click();
+          } else {
+            setActiveTool(t.id);
+          }
+        }}
+        title={isWarpDimmed ? `${t.label} — Radial Warp does not apply to this tool` : t.label}
+        style={{
+          display: "flex",
+          width: "40px",
+          height: "40px",
+          alignItems: "center",
+          justifyContent: "center",
+          borderRadius: "8px",
+          border: "none",
+          background: isActive ? "#6366f1" : "transparent",
+          color: isActive ? "#ffffff" : isWarpDimmed ? "#3d4257" : "#94a3b8",
+          cursor: "pointer",
+          transition: "all 0.2s ease",
+          opacity: isWarpDimmed ? 0.4 : 1,
+        }}
+        onMouseEnter={(e) => {
+          if (!isActive && !isWarpDimmed) {
+            e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+            e.currentTarget.style.color = "#ffffff";
+          }
+        }}
+        onMouseLeave={(e) => {
+          if (!isActive) {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = isWarpDimmed ? "#3d4257" : "#94a3b8";
+          }
+        }}
+      >
+        {t.icon}
+      </button>
+    );
+  };
 
   return (
     <div
       ref={containerRef}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
       style={{
         width: "100%",
         height: "100%",
@@ -482,62 +964,404 @@ export const CanvasWorkspace: React.FC = () => {
         userSelect: "none",
       }}
     >
+      {/* Floating Selection Action Toolbar */}
+      {selectedItems.length > 0 && (
+        <div
+          style={{
+            position: "absolute",
+            top: "16px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 10,
+            display: "flex",
+            gap: "8px",
+            backgroundColor: "rgba(22, 23, 28, 0.85)",
+            backdropFilter: "blur(12px)",
+            padding: "6px 12px",
+            borderRadius: "8px",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            boxShadow: "0 4px 16px rgba(0,0,0,0.3)",
+            alignItems: "center",
+          }}
+        >
+          <span style={{ fontSize: "12px", color: "#94a3b8", marginRight: "8px", fontFamily: "Outfit, sans-serif" }}>
+            {selectedItems.length} selected
+          </span>
+          
+          <button
+            onClick={handleCopyAction}
+            title="Copy (Ctrl+C)"
+            style={{
+              padding: "4px 8px",
+              borderRadius: "4px",
+              border: "none",
+              background: "rgba(255, 255, 255, 0.06)",
+              color: "#f1f5f9",
+              fontSize: "12px",
+              cursor: "pointer",
+              fontFamily: "Outfit, sans-serif",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.12)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)")}
+          >
+            Copy
+          </button>
+          
+          {selectedItems.length > 1 && (
+            <button
+              onClick={handleGroupAction}
+              title="Group (Ctrl+G)"
+              style={{
+                padding: "4px 8px",
+                borderRadius: "4px",
+                border: "none",
+                background: "#6366f1",
+                color: "white",
+                fontSize: "12px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontFamily: "Outfit, sans-serif",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#4f46e5")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#6366f1")}
+            >
+              Group
+            </button>
+          )}
+
+          {selectedItems.length === 1 && selectedItems[0].type === "group" && (
+            <button
+              onClick={handleUngroupAction}
+              title="Ungroup (Ctrl+Shift+G)"
+              style={{
+                padding: "4px 8px",
+                borderRadius: "4px",
+                border: "none",
+                background: "#6366f1",
+                color: "white",
+                fontSize: "12px",
+                cursor: "pointer",
+                fontWeight: "bold",
+                fontFamily: "Outfit, sans-serif",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#4f46e5")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#6366f1")}
+            >
+              Ungroup
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Top Center Symmetry Control Bar */}
+      <div
+        style={{
+          position: "absolute",
+          top: "16px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 10,
+          display: "flex",
+          alignItems: "center",
+          gap: "5px",
+          backgroundColor: "rgba(22, 23, 28, 0.85)",
+          backdropFilter: "blur(12px)",
+          padding: "4px 12px",
+          borderRadius: "20px",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.3)",
+        }}
+      >
+        <span style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.5px", marginRight: "4px" }}>
+          Copies:
+        </span>
+        {[1, 4, 6, 8, 12, 26, 36, 60].map((count) => (
+          <button
+            key={count}
+            onClick={() => setSymmetryCount(count)}
+            title={count === 1 ? "1× Single Placement" : `${count}× Copies (${(360 / count).toFixed(2)}° apart)`}
+            style={{
+              background: symmetryCount === count ? "#6366f1" : "transparent",
+              color: symmetryCount === count ? "#ffffff" : "#94a3b8",
+              border: "none",
+              borderRadius: "12px",
+              padding: "3px 8px",
+              fontSize: "11px",
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.2s ease",
+            }}
+          >
+            {count}×
+          </button>
+        ))}
+        <div style={{ display: "flex", alignItems: "center", gap: "2px", marginLeft: "4px", borderLeft: "1px solid rgba(255, 255, 255, 0.1)", paddingLeft: "6px" }}>
+          <input
+            type="number"
+            min="1"
+            max="360"
+            value={symmetryCount}
+            onChange={(e) => {
+              const val = parseInt(e.target.value) || 1;
+              setSymmetryCount(Math.max(1, Math.min(360, val)));
+            }}
+            title="Custom Symmetry Multiplier (1 - 360)"
+            style={{
+              width: "42px",
+              backgroundColor: "rgba(0, 0, 0, 0.4)",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: "6px",
+              color: "#f8fafc",
+              fontSize: "11px",
+              fontWeight: 700,
+              padding: "2px 4px",
+              textAlign: "center",
+              outline: "none",
+            }}
+          />
+          <span style={{ fontSize: "10px", color: "#64748b", fontWeight: 700 }}>×</span>
+        </div>
+
+        {/* Canvas-Wide Grid & Guide Control Bar (3-Way Toggle: Off | Grid BG | Grid FG) */}
+        <div style={{ display: "flex", alignItems: "center", gap: "6px", marginLeft: "8px", borderLeft: "1px solid rgba(255, 255, 255, 0.12)", paddingLeft: "10px" }}>
+          <div style={{ display: "flex", backgroundColor: "rgba(0, 0, 0, 0.4)", borderRadius: "14px", padding: "2px", border: "1px solid rgba(255, 255, 255, 0.1)" }}>
+            {(["off", "background", "foreground"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setGridLayer(mode)}
+                title={
+                  mode === "off"
+                    ? "Turn Canvas Grid Off"
+                    : mode === "background"
+                    ? "Grid Background (rendered behind mechanism paper rings)"
+                    : "Grid Foreground (rendered in front of artwork)"
+                }
+                style={{
+                  background: gridLayer === mode ? "#6366f1" : "transparent",
+                  color: gridLayer === mode ? "#ffffff" : "#94a3b8",
+                  border: "none",
+                  borderRadius: "12px",
+                  padding: "2px 8px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                {mode === "off" ? "Off" : mode === "background" ? "Grid BG" : "Grid FG"}
+              </button>
+            ))}
+          </div>
+
+          {gridLayer !== "off" && (
+            <>
+              <button
+                onClick={() => setGridMode(gridMode === "auto-symmetry" ? "manual" : "auto-symmetry")}
+                title={gridMode === "auto-symmetry" ? "Auto-synced to active ring symmetry. Click to switch to Manual." : "Manual slice lines. Click to switch to Auto-Symmetry."}
+                style={{
+                  background: gridMode === "auto-symmetry" ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 158, 11, 0.2)",
+                  color: gridMode === "auto-symmetry" ? "#34d399" : "#fbbf24",
+                  border: gridMode === "auto-symmetry" ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(245, 158, 11, 0.4)",
+                  borderRadius: "12px",
+                  padding: "2px 8px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {gridMode === "auto-symmetry" ? "Auto-Symmetry" : `Manual (${manualSliceCount})`}
+              </button>
+
+              {gridMode === "manual" && (
+                <input
+                  type="number"
+                  min="1"
+                  max="360"
+                  value={manualSliceCount}
+                  onChange={(e) => setManualSliceCount(parseInt(e.target.value) || 1)}
+                  title="Manual Grid Slice Count (1 - 360)"
+                  style={{
+                    width: "42px",
+                    backgroundColor: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: "6px",
+                    color: "#f8fafc",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    padding: "2px 4px",
+                    textAlign: "center",
+                    outline: "none",
+                  }}
+                />
+              )}
+
+              <button
+                onClick={() => toggleCircularGuides()}
+                title={showCircularGuides ? "Hide Concentric Circular Guides" : "Show Concentric Circular Guides"}
+                style={{
+                  background: showCircularGuides ? "rgba(99, 102, 241, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                  color: showCircularGuides ? "#818cf8" : "#64748b",
+                  border: "none",
+                  borderRadius: "12px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Circles
+              </button>
+
+              <button
+                onClick={() => {
+                  const nextMap: Record<string, any> = { auto: "dark", dark: "light", light: "indigo", indigo: "auto" };
+                  setGridLineColorMode(nextMap[gridLineColorMode] || "auto");
+                }}
+                title={`Grid Line Color Theme: ${gridLineColorMode.toUpperCase()}. Click to cycle (Auto / Dark / Light / Indigo).`}
+                style={{
+                  background: "rgba(255, 255, 255, 0.06)",
+                  color: "#cbd5e1",
+                  border: "none",
+                  borderRadius: "12px",
+                  padding: "2px 6px",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Line: {gridLineColorMode.toUpperCase()}
+              </button>
+            </>
+          )}
+          {/* Radial Warp Toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: "5px", marginLeft: "8px", borderLeft: "1px solid rgba(255, 255, 255, 0.12)", paddingLeft: "10px" }}>
+            <button
+              onClick={() => setRadialWarpEnabled(!radialWarpEnabled)}
+              title={radialWarpEnabled
+                ? "Radial Warp: ON — New rectangles and trapezoids will be deformed into arc-slice shapes. Click to disable."
+                : "Radial Warp: OFF — Enable to place rectangles and trapezoids as arc-conforming shapes. Only applies to new placements."}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "5px",
+                background: radialWarpEnabled ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.04)",
+                color: radialWarpEnabled ? "#c084fc" : "#64748b",
+                border: radialWarpEnabled ? "1px solid rgba(192, 132, 252, 0.5)" : "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: "12px",
+                padding: "2px 10px",
+                fontSize: "11px",
+                fontWeight: 700,
+                cursor: "pointer",
+                transition: "all 0.2s ease",
+                letterSpacing: "0.3px",
+              }}
+              onMouseEnter={(e) => {
+                if (!radialWarpEnabled) {
+                  e.currentTarget.style.background = "rgba(99, 102, 241, 0.12)";
+                  e.currentTarget.style.color = "#a78bfa";
+                  e.currentTarget.style.borderColor = "rgba(167, 139, 250, 0.4)";
+                }
+              }}
+              onMouseLeave={(e) => {
+                if (!radialWarpEnabled) {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
+                  e.currentTarget.style.color = "#64748b";
+                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.08)";
+                }
+              }}
+            >
+              {/* Arc-slice icon */}
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                <path d="M3 20 Q12 2 21 20" />
+                <path d="M6 16 Q12 7 18 16" />
+              </svg>
+              Radial Warp
+            </button>
+          </div>
+        </div>
+      </div>
+
       {/* Floating Vertical Toolbox */}
       <div
         style={{
           position: "absolute",
           left: "16px",
-          top: "16px",
+          top: "86px",
           zIndex: 10,
           display: "flex",
           flexDirection: "column",
-          gap: "8px",
+          gap: "4px",
           backgroundColor: "rgba(22, 23, 28, 0.85)",
           backdropFilter: "blur(12px)",
-          padding: "8px",
+          padding: "6px",
           borderRadius: "12px",
           border: "1px solid rgba(255, 255, 255, 0.08)",
           boxShadow: "0 8px 32px rgba(0, 0, 0, 0.4)",
         }}
       >
-        {toolsList.map((t) => {
-          const isActive = activeToolId === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => setActiveTool(t.id)}
-              title={t.label}
+        {/* Section 1: Selection & Mode Switch */}
+        {section1Tools.map(renderToolButton)}
+        <button
+          onClick={() => setCreationMode(creationMode === "solid" ? "cutout" : "solid")}
+          title={
+            creationMode === "cutout"
+              ? "Creation Mode: Window Cutouts (Click for Solid Shapes)"
+              : "Creation Mode: Solid Shapes (Click for Window Cutouts)"
+          }
+          style={{
+            display: "flex",
+            width: "40px",
+            height: "40px",
+            alignItems: "center",
+            justifyContent: "center",
+            borderRadius: "8px",
+            border: creationMode === "cutout" ? "1px solid rgba(99, 102, 241, 0.4)" : "none",
+            background: creationMode === "cutout" ? "rgba(99, 102, 241, 0.25)" : "transparent",
+            color: creationMode === "cutout" ? "#a5b4fc" : "#64748b",
+            cursor: "pointer",
+            transition: "all 0.2s ease",
+            position: "relative",
+          }}
+          onMouseEnter={(e) => {
+            if (creationMode !== "cutout") {
+              e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+              e.currentTarget.style.color = "#ffffff";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (creationMode !== "cutout") {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "#64748b";
+            }
+          }}
+        >
+          <Eye className="h-5 w-5" />
+          {creationMode === "cutout" && (
+            <span
               style={{
-                display: "flex",
-                width: "40px",
-                height: "40px",
-                alignItems: "center",
-                justifyContent: "center",
-                borderRadius: "8px",
-                border: "none",
-                background: isActive ? "#6366f1" : "transparent",
-                color: isActive ? "#ffffff" : "#94a3b8",
-                cursor: "pointer",
-                transition: "all 0.2s ease",
+                position: "absolute",
+                bottom: "3px",
+                right: "3px",
+                width: "6px",
+                height: "6px",
+                borderRadius: "50%",
+                backgroundColor: "#6366f1",
+                boxShadow: "0 0 6px #6366f1",
               }}
-              onMouseEnter={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                  e.currentTarget.style.color = "#ffffff";
-                }
-              }}
-              onMouseLeave={(e) => {
-                if (!isActive) {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "#94a3b8";
-                }
-              }}
-            >
-              {t.icon}
-            </button>
-          );
-        })}
-        <div style={{ height: "1px", backgroundColor: "rgba(255,255,255,0.08)", margin: "4px 0" }} />
+            />
+          )}
+        </button>
+
+        {/* Divider 1 */}
+        <div style={{ width: "20px", height: "1px", backgroundColor: "rgba(255, 255, 255, 0.12)", margin: "4px auto" }} />
+
+        {/* Section 2: Shape, Text & Image Creation Tools */}
+        {section2Tools.map(renderToolButton)}
+
+        {/* Divider 2 */}
+        <div style={{ width: "20px", height: "1px", backgroundColor: "rgba(255, 255, 255, 0.12)", margin: "4px auto" }} />
+
+        {/* Section 4: Tool Keep-Active Lock */}
         <button
           onClick={() => setToolLocked(!isToolLocked)}
           title={isToolLocked ? "Tool Keep-Active: Locked" : "Tool Keep-Active: Unlocked"}
@@ -632,13 +1456,23 @@ export const CanvasWorkspace: React.FC = () => {
           const wx = (pointer.x - stageX) / zoom;
           const wy = (pointer.y - stageY) / zoom;
           const hit = findHitNode({ x: wx, y: wy }, resolvedNodes, createToolContext(pointer, null));
-          if (hit && (hit.type === "text" || hit.type === "arcText" || hit.type === "sectorLabel")) {
-            setEditingTextNodeId(hit.id);
+          if (hit) {
+            if (hit.type === "text" || hit.type === "arcText" || hit.type === "sectorLabel") {
+              setEditingTextNodeId(hit.id);
+            } else if (hit.type === "window" && (hit.renderData.shape?.type === "text" || hit.renderData.shape?.type === "arcText")) {
+              setEditingTextNodeId(hit.id);
+            }
           }
         }}
       >
         <Layer>
+          {/* Background Grid Overlay (behind mechanism paper rings) */}
+          <CanvasGridOverlay targetPosition="background" />
+
           <ResolvedRenderer nodes={resolvedNodes} />
+
+          {/* Foreground Grid Overlay (in front of mechanism paper rings) */}
+          <CanvasGridOverlay targetPosition="foreground" />
 
           {/* Marquee outline Rect element */}
           {marqueeRect && (
@@ -668,6 +1502,9 @@ export const CanvasWorkspace: React.FC = () => {
         const editingNode = resolvedNodes.find((n) => n.id === editingTextNodeId);
         if (!editingNode) return null;
 
+        const targetShape = editingNode.type === "window" ? editingNode.renderData.shape : editingNode.renderData;
+        const targetType = targetShape?.type || editingNode.type;
+
         const { x, y, rotation, scaleX, scaleY } = editingNode.worldTransform;
         const rotRad = (rotation * Math.PI) / 180;
         const cos = Math.cos(rotRad) * scaleX;
@@ -676,12 +1513,23 @@ export const CanvasWorkspace: React.FC = () => {
         let wx = x;
         let wy = y;
 
-        if (editingNode.type === "arcText") {
-          const centerAngle = (editingNode.renderData.startAngle || 0) + (editingNode.renderData.sweepAngle || 0) / 2;
+        if (targetType === "arcText") {
+          const content = targetShape?.content || localTextValue || "";
+          const radius = targetShape?.radius || 100;
+          const startAngle = targetShape?.startAngle || 0;
+          const fontSize = targetShape?.fontSize || 12;
+          const fontFamily = targetShape?.fontFamily || "Outfit, Inter, sans-serif";
+          const kerning = targetShape?.kerning || 0;
+
+          const layout = getArcTextCharPositions(content, radius, startAngle, fontSize, fontFamily, kerning);
+          const totalSweep = layout.totalSweep > 0 ? layout.totalSweep : (targetShape?.sweepAngle || 30);
+          const centerAngle = startAngle + totalSweep / 2;
           const centerAngleRad = (centerAngle * Math.PI) / 180;
-          const radius = editingNode.renderData.radius || 100;
-          const lx = radius * Math.cos(centerAngleRad);
-          const ly = radius * Math.sin(centerAngleRad);
+
+          // Position floating popup radially outward so it never obscures the canvas text
+          const radialOffset = radius + fontSize * 1.2 + 50 / zoom;
+          const lx = radialOffset * Math.cos(centerAngleRad);
+          const ly = radialOffset * Math.sin(centerAngleRad);
           wx = x + (lx * cos - ly * sin);
           wy = y + (lx * sin + ly * cos);
         } else {
@@ -694,11 +1542,11 @@ export const CanvasWorkspace: React.FC = () => {
         const screenX = dimensions.width / 2 + pan.x + wx * zoom;
         const screenY = dimensions.height / 2 + pan.y + wy * zoom;
 
-        const fontSize = editingNode.renderData.fontSize || 14;
-        const fontFamily = editingNode.renderData.fontFamily || "Outfit, Inter, sans-serif";
-        const color = editingNode.renderData.style?.fill || "#cbd5e1";
+        const fontSize = targetShape?.fontSize || editingNode.renderData.fontSize || 14;
+        const fontFamily = targetShape?.fontFamily || editingNode.renderData.fontFamily || "Outfit, Inter, sans-serif";
+        const color = editingNode.type === "window" ? "#6366f1" : (editingNode.renderData.style?.fill || "#cbd5e1");
 
-        const isStandardText = editingNode.type === "text";
+        const isStandardText = targetType === "text";
         
         const baseStyle: React.CSSProperties = {
           position: "absolute",
@@ -714,45 +1562,107 @@ export const CanvasWorkspace: React.FC = () => {
           lineHeight: 1,
         };
 
-        const standardTextStyle: React.CSSProperties = {
-          ...baseStyle,
-          background: "transparent",
-          border: "none",
-          boxShadow: "none",
-          padding: 0,
-          width: `${Math.max(40, editingNode.bounds.width * zoom + 32)}px`,
-          height: `${Math.max(20, fontSize * zoom * 1.3)}px`,
-          overflow: "hidden",
-          transform: `rotate(${rotation}deg)`,
-          transformOrigin: "0 0",
-        };
+        if (isStandardText) {
+          const standardTextStyle: React.CSSProperties = {
+            ...baseStyle,
+            background: "transparent",
+            border: "none",
+            boxShadow: "none",
+            padding: 0,
+            width: `${Math.max(40, editingNode.bounds.width * zoom + 32)}px`,
+            height: `${Math.max(20, fontSize * zoom * 1.3)}px`,
+            overflow: "hidden",
+            transform: `rotate(${rotation}deg)`,
+            transformOrigin: "0 0",
+          };
 
-        const overlayStyle: React.CSSProperties = {
-          ...baseStyle,
-          background: "rgba(22, 23, 28, 0.95)",
-          backdropFilter: "blur(4px)",
+          return (
+            <textarea
+              ref={textareaRef}
+              value={localTextValue}
+              onChange={handleTextChange}
+              onKeyDown={handleTextKeyDown}
+              onBlur={commitTextEdit}
+              style={standardTextStyle}
+            />
+          );
+        }
+
+        const topCenterStyle: React.CSSProperties = {
+          position: "absolute",
+          top: "70px",
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 150,
+          background: "rgba(15, 23, 42, 0.94)",
+          backdropFilter: "blur(12px)",
           border: "1px solid #6366f1",
-          borderRadius: "6px",
-          padding: "6px 10px",
-          boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5)",
-          width: `${Math.max(160, editingNode.bounds.width * zoom + 32)}px`,
-          height: `${Math.max(36, fontSize * zoom * 1.5 + 12)}px`,
-          transform: "translate(-50%, -50%)",
+          borderRadius: "10px",
+          padding: "8px 14px",
+          boxShadow: "0 16px 36px -8px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(99, 102, 241, 0.3)",
+          display: "flex",
+          alignItems: "center",
+          gap: "12px",
+          minWidth: "360px",
+          maxWidth: "calc(100vw - 320px)",
         };
-
-        const style = isStandardText ? standardTextStyle : overlayStyle;
 
         return (
-          <textarea
-            ref={textareaRef}
-            value={localTextValue}
-            onChange={handleTextChange}
-            onKeyDown={handleTextKeyDown}
-            onBlur={commitTextEdit}
-            style={style}
-          />
+          <div style={topCenterStyle}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "90px" }}>
+              <Heading className="h-4 w-4 text-indigo-400" />
+              <span style={{ fontSize: "11px", fontWeight: 700, color: "#cbd5e1", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                Arc Text
+              </span>
+            </div>
+            <input
+              type="text"
+              ref={textareaRef as any}
+              value={localTextValue}
+              onChange={(e: any) => handleTextChange(e)}
+              onKeyDown={(e: any) => handleTextKeyDown(e)}
+              onBlur={commitTextEdit}
+              style={{
+                flex: 1,
+                background: "rgba(30, 41, 59, 0.85)",
+                border: "1px solid #475569",
+                borderRadius: "6px",
+                color: "#f8fafc",
+                fontFamily: fontFamily,
+                fontSize: "14px",
+                padding: "7px 12px",
+                outline: "none",
+              }}
+              placeholder="Type arc text..."
+            />
+            <button
+              onClick={commitTextEdit}
+              style={{
+                background: "#4f46e5",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "7px 14px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+              }}
+            >
+              Done
+            </button>
+          </div>
         );
       })()}
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept="image/png, image/jpeg, image/svg+xml"
+        multiple
+        style={{ display: "none" }}
+        onChange={handleImageFileSelect}
+      />
     </div>
   );
 };

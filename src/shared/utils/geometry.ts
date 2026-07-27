@@ -2,6 +2,7 @@ import type { Project, RingNode } from "../types/project";
 import type { ResolvedNode } from "../../features/runtime/mechanismEngine";
 import { Matrix2D } from "./matrix";
 import { normalizeAngle } from "./math";
+import { getArcTextCharPositions } from "./textGeometry";
 
 export function findRingForNode(project: Project, nodeId: string): string | null {
   const rings = (project.mechanism.children || []).filter(
@@ -49,6 +50,26 @@ export function findNodeInTree(node: any, id: string): any | null {
   return null;
 }
 
+export function updateNodeInTree(tree: any, id: string, patch: any): boolean {
+  const node = findNodeInTree(tree, id);
+  if (node) {
+    if (patch.transform) {
+      node.transform = { ...node.transform, ...patch.transform };
+    }
+    Object.keys(patch).forEach((key) => {
+      if (key !== "transform") {
+        if (typeof patch[key] === "object" && patch[key] !== null && !Array.isArray(patch[key])) {
+          node[key] = { ...(node[key] || {}), ...patch[key] };
+        } else {
+          node[key] = patch[key];
+        }
+      }
+    });
+    return true;
+  }
+  return false;
+}
+
 export function isDescendantOf(parentNode: any, childId: string): boolean {
   if (!parentNode.children) return false;
   for (const child of parentNode.children) {
@@ -76,7 +97,39 @@ export function isPointInsideNode(pos: { x: number; y: number }, node: ResolvedN
     const inv = m.invert();
     const lp = inv.transformPoint(pos.x, pos.y);
 
+    if (node.renderData?.isRadialWarp) {
+      const r = Math.sqrt(lp.x * lp.x + lp.y * lp.y);
+      const radius = node.renderData.radialRadius || 100;
+      const w = node.bounds.width;
+      const h = node.bounds.height;
+      const inner = radius - h / 2;
+      const outer = radius + h / 2;
+      if (r < inner || r > outer) return false;
+
+      let angle = Math.atan2(lp.y, lp.x) * (180 / Math.PI);
+      let diff = angle;
+      while (diff > 180) diff -= 360;
+      while (diff < -180) diff += 360;
+      return Math.abs(diff) <= w / 2;
+    }
+
     switch (node.type) {
+      case "ring": {
+        const inner = node.renderData.innerRadius || 0;
+        const outer = node.renderData.outerRadius || 100;
+        const r = Math.sqrt(lp.x * lp.x + lp.y * lp.y);
+        const isPoly = node.renderData.ringShape === "polygon";
+        if (isPoly) {
+          const sides = Math.max(3, node.renderData.polygonSides || 6);
+          let angle = Math.atan2(lp.y, lp.x);
+          if (angle < 0) angle += Math.PI * 2;
+          const sectorAngle = (2 * Math.PI) / sides;
+          const localAngle = (angle % sectorAngle) - sectorAngle / 2;
+          const distToEdge = r * Math.cos(localAngle);
+          return r >= inner && distToEdge <= outer;
+        }
+        return r >= inner && r <= outer;
+      }
       case "circle": {
         const r = node.renderData.radius || 10;
         return lp.x * lp.x + lp.y * lp.y <= r * r;
@@ -115,28 +168,80 @@ export function isPointInsideNode(pos: { x: number; y: number }, node: ResolvedN
         let angle = Math.atan2(lp.y, lp.x) * (180 / Math.PI);
         angle = normalizeAngle(angle);
         const start = node.renderData.startAngle || 0;
-        const sweep = node.renderData.sweepAngle || 0;
+        const content = node.renderData.content || "";
+        const fontFamily = node.renderData.fontFamily || "Outfit, Inter, sans-serif";
+        const kerning = node.renderData.kerning || 0;
+        const layout = getArcTextCharPositions(content, radius, start, fontSize, fontFamily, kerning);
+        const sweep = layout.totalSweep > 0 ? layout.totalSweep : (node.renderData.sweepAngle || 30);
         return isAngleBetween(angle, start, sweep);
       }
       case "window": {
         const shape = node.renderData.shape;
         if (!shape) return false;
         if (shape.type === "circle") {
-          return lp.x * lp.x + lp.y * lp.y <= shape.radius * shape.radius;
+          const r = shape.radius || 10;
+          return lp.x * lp.x + lp.y * lp.y <= r * r;
         }
         if (shape.type === "rectangle") {
+          const w = shape.width || 20;
+          const h = shape.height || 20;
           return (
-            lp.x >= -shape.width / 2 &&
-            lp.x <= shape.width / 2 &&
-            lp.y >= -shape.height / 2 &&
-            lp.y <= shape.height / 2
+            lp.x >= -w / 2 &&
+            lp.x <= w / 2 &&
+            lp.y >= -h / 2 &&
+            lp.y <= h / 2
           );
         }
         if (shape.type === "polygon") {
           const r = shape.radius || 10;
           return lp.x * lp.x + lp.y * lp.y <= r * r;
         }
-        return false;
+        if (shape.type === "star") {
+          const r = shape.outerRadius || 35;
+          return lp.x * lp.x + lp.y * lp.y <= r * r;
+        }
+        if (shape.type === "crescent") {
+          const r = shape.radius || 30;
+          return lp.x * lp.x + lp.y * lp.y <= r * r;
+        }
+        if (shape.type === "trapezoid") {
+          const maxW = Math.max(shape.baseWidth || 60, shape.topWidth || 40);
+          const h = shape.height || 50;
+          return (
+            lp.x >= -maxW / 2 &&
+            lp.x <= maxW / 2 &&
+            lp.y >= -h / 2 &&
+            lp.y <= h / 2
+          );
+        }
+        if (shape.type === "line") {
+          const len = shape.length || 50;
+          const thick = shape.thickness || 2;
+          return lp.x >= 0 && lp.x <= len && lp.y >= -thick / 2 && lp.y <= thick / 2;
+        }
+        if (shape.type === "text" || shape.type === "sectorLabel") {
+          const fs = shape.fontSize || 14;
+          const len = (shape.content || "").length || 4;
+          const w = len * fs * 0.6;
+          return lp.x >= 0 && lp.x <= w && lp.y >= -fs && lp.y <= 0;
+        }
+        if (shape.type === "arcText") {
+          const r = Math.sqrt(lp.x * lp.x + lp.y * lp.y);
+          const radius = shape.radius || 100;
+          const fontSize = shape.fontSize || 12;
+          if (r < radius - fontSize * 0.8 || r > radius + fontSize * 0.8) return false;
+
+          let angle = Math.atan2(lp.y, lp.x) * (180 / Math.PI);
+          angle = normalizeAngle(angle);
+          const start = shape.startAngle || 0;
+          const content = shape.content || "";
+          const fontFamily = shape.fontFamily || "Outfit, Inter, sans-serif";
+          const kerning = shape.kerning || 0;
+          const layout = getArcTextCharPositions(content, radius, start, fontSize, fontFamily, kerning);
+          const sweep = layout.totalSweep > 0 ? layout.totalSweep : (shape.sweepAngle || 30);
+          return isAngleBetween(angle, start, sweep);
+        }
+        return lp.x >= bx && lp.x <= bx + bw && lp.y >= by && lp.y <= by + bh;
       }
       default:
         return lp.x >= bx && lp.x <= bx + bw && lp.y >= by && lp.y <= by + bh;
@@ -177,7 +282,12 @@ export function getNodeKeyPoints(node: ResolvedNode): { x: number; y: number }[]
   if (node.type === "arcText") {
     const radius = node.renderData.radius || 100;
     const start = node.renderData.startAngle || 0;
-    const sweep = node.renderData.sweepAngle || 0;
+    const fontSize = node.renderData.fontSize || 12;
+    const content = node.renderData.content || "";
+    const fontFamily = node.renderData.fontFamily || "Outfit, Inter, sans-serif";
+    const kerning = node.renderData.kerning || 0;
+    const layout = getArcTextCharPositions(content, radius, start, fontSize, fontFamily, kerning);
+    const sweep = layout.totalSweep > 0 ? layout.totalSweep : (node.renderData.sweepAngle || 30);
 
     const points: { x: number; y: number }[] = [];
     const numPoints = 5;
