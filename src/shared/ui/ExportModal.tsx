@@ -154,7 +154,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ project, onClose }) =>
                 <div className="settings-grid">
                   <div className="control-group">
                     <label>Target Layers</label>
-                    <select value={layer} onChange={(e: any) => setLayer(e.target.value)}>
+                    <select value={layer} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setLayer(e.target.value as any)}>
                       <option value="all">All Layers Combined</option>
                       <option value="artwork">Artwork Layer Only</option>
                       <option value="cut">Cut Outlines Only</option>
@@ -213,7 +213,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ project, onClose }) =>
                 <div className="settings-grid">
                   <div className="control-group">
                     <label>Package Format</label>
-                    <select value={bundleType} onChange={(e: any) => setBundleType(e.target.value)}>
+                    <select value={bundleType} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setBundleType(e.target.value as any)}>
                       <option value="single">Standalone Single HTML File</option>
                       <option value="zip">Developer Bundle ZIP (HTML, JS, CSS, JSON)</option>
                     </select>
@@ -221,7 +221,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ project, onClose }) =>
 
                   <div className="control-group">
                     <label>Dial Control Mode</label>
-                    <select value={controlStyle} onChange={(e: any) => setControlStyle(e.target.value)}>
+                    <select value={controlStyle} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setControlStyle(e.target.value as any)}>
                       <option value="with-controls">Side Controls & Rotation Sliders</option>
                       <option value="bare">Bare Volvelle Dial Only</option>
                     </select>
@@ -229,7 +229,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ project, onClose }) =>
 
                   <div className="control-group">
                     <label>State Persistence Mode</label>
-                    <select value={persistenceMode} onChange={(e: any) => setPersistenceMode(e.target.value)}>
+                    <select value={persistenceMode} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setPersistenceMode(e.target.value as any)}>
                       <option value="persist-reset">Persist Drag State + Reset (localStorage)</option>
                       <option value="always-reset">Always Reset on reload</option>
                     </select>
@@ -237,7 +237,7 @@ export const ExportModal: React.FC<ExportModalProps> = ({ project, onClose }) =>
 
                   <div className="control-group">
                     <label>UI Theme</label>
-                    <select value={theme} onChange={(e: any) => setTheme(e.target.value)}>
+                    <select value={theme} onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTheme(e.target.value as any)}>
                       <option value="dark">Dark Theme</option>
                       <option value="light">Light Theme</option>
                     </select>

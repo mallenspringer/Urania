@@ -17,6 +17,7 @@ import { useToolStore } from "../../features/tools/toolStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";
 import { loadFont, drawTextGlyphsToContext } from "../utils/fontManager";
 import { getArcTextCharPositions } from "../utils/textGeometry";
+import { findRingForNode } from "../utils/geometry";
 
 const RING_COLORS = [
   "#6366f1", // Indigo
@@ -137,29 +138,6 @@ function drawPolygonPath(
     }
   }
   ctx.closePath();
-}
-
-function findRingForNode(project: any, nodeId: string): string | null {
-  const rings = (project.mechanism.children || []).filter(
-    (c: any) => c.type === "ring"
-  );
-  for (const ring of rings) {
-    if (ring.id === nodeId) return ring.id;
-
-    const hasChild = (node: any): boolean => {
-      if (node.id === nodeId) return true;
-      if (node.children) {
-        for (const child of node.children) {
-          if (hasChild(child)) return true;
-        }
-      }
-      return false;
-    };
-    if (hasChild(ring)) {
-      return ring.id;
-    }
-  }
-  return null;
 }
 
 function drawAddShapePath(ctx: any, shape: any) {

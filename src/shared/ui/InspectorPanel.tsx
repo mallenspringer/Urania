@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { useProjectStore } from "../../features/project/projectStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";
 import { useViewStore } from "../../features/project/viewStore";
-import { findNodeInTree } from "../utils/geometry";
+import { findNodeInTree, updateNodeInTree } from "../utils/geometry";
 import { UpdateNodeCommand, DeleteMultipleNodesCommand, UpdateMultipleNodesCommand } from "../../features/project/commands";
 import { calculateSymmetryGroupUpdates, findSymmetryGroupMembers, computeSymmetryOffsets } from "../utils/symmetryHelper";
 import {
@@ -38,19 +38,7 @@ function deepMerge(target: any, source: any) {
   }
 }
 
-// Tree node update helper
-function updateNodeInTree(tree: any, id: string, patch: any): boolean {
-  if (tree.id === id) {
-    deepMerge(tree, patch);
-    return true;
-  }
-  if (tree.children) {
-    for (const child of tree.children) {
-      if (updateNodeInTree(child, id, patch)) return true;
-    }
-  }
-  return false;
-}
+
 
 interface InspectorPanelProps {
   onDeleteRing?: (ring: any) => void;

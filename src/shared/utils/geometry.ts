@@ -1,4 +1,4 @@
-import type { Project, RingNode } from "../types/project";
+import type { Project, RingNode, BaseNode } from "../types/project";
 import type { ResolvedNode } from "../../features/runtime/mechanismEngine";
 import { Matrix2D } from "./matrix";
 import { normalizeAngle } from "./math";
@@ -11,7 +11,7 @@ export function findRingForNode(project: Project, nodeId: string): string | null
   for (const ring of rings) {
     if (ring.id === nodeId) return ring.id;
 
-    const hasChild = (node: any): boolean => {
+    const hasChild = (node: BaseNode): boolean => {
       if (node.id === nodeId) return true;
       if (node.children) {
         for (const child of node.children) {
@@ -27,7 +27,7 @@ export function findRingForNode(project: Project, nodeId: string): string | null
   return null;
 }
 
-export function findParentNode(tree: any, childId: string): any | null {
+export function findParentNode(tree: BaseNode, childId: string): BaseNode | null {
   if (tree.children) {
     for (const child of tree.children) {
       if (child.id === childId) return tree;
@@ -38,8 +38,7 @@ export function findParentNode(tree: any, childId: string): any | null {
   return null;
 }
 
-
-export function findNodeInTree(node: any, id: string): any | null {
+export function findNodeInTree(node: BaseNode, id: string): BaseNode | null {
   if (node.id === id) return node;
   if (node.children) {
     for (const child of node.children) {
@@ -50,8 +49,8 @@ export function findNodeInTree(node: any, id: string): any | null {
   return null;
 }
 
-export function updateNodeInTree(tree: any, id: string, patch: any): boolean {
-  const node = findNodeInTree(tree, id);
+export function updateNodeInTree(tree: BaseNode, id: string, patch: Record<string, any>): boolean {
+  const node = findNodeInTree(tree, id) as any;
   if (node) {
     if (patch.transform) {
       node.transform = { ...node.transform, ...patch.transform };
@@ -70,7 +69,7 @@ export function updateNodeInTree(tree: any, id: string, patch: any): boolean {
   return false;
 }
 
-export function isDescendantOf(parentNode: any, childId: string): boolean {
+export function isDescendantOf(parentNode: BaseNode, childId: string): boolean {
   if (!parentNode.children) return false;
   for (const child of parentNode.children) {
     if (child.id === childId) return true;

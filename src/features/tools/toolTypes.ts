@@ -1,3 +1,4 @@
+import type { KonvaEventObject } from "konva/lib/Node";
 import type { Project } from "../../shared/types/project";
 import type { Command } from "../../shared/types/command";
 
@@ -11,8 +12,8 @@ export interface ToolContext {
   pointerPos: { x: number; y: number } | null; // in world coordinates
   startPos: { x: number; y: number } | null;   // in world coordinates
   executeCommand: (command: Command) => void;
-  updatePreview: (data: any) => void;
-  currentPreviewData: any;
+  updatePreview: (data: Record<string, unknown> | null) => void;
+  currentPreviewData: Record<string, unknown> | null;
   isShift: boolean;
   isAlt: boolean;
 }
@@ -25,9 +26,9 @@ export interface Tool {
   category: "selection" | "shapes" | "windows" | "text" | "guides";
   onActivate?(context: ToolContext): void;
   onDeactivate?(context: ToolContext): void;
-  onMouseDown?(e: any, context: ToolContext): void;
-  onMouseMove?(e: any, context: ToolContext): void;
-  onMouseUp?(e: any, context: ToolContext): void;
+  onMouseDown?(e: KonvaEventObject<MouseEvent>, context: ToolContext): void;
+  onMouseMove?(e: KonvaEventObject<MouseEvent>, context: ToolContext): void;
+  onMouseUp?(e: KonvaEventObject<MouseEvent>, context: ToolContext): void;
   onKeyDown?(e: KeyboardEvent, context: ToolContext): void;
   renderPreview?(context: ToolContext): React.ReactNode;
 }

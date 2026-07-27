@@ -2,6 +2,7 @@ import type { Command } from "../../shared/types/command";
 import type { RingNode, BaseNode } from "../../shared/types/project";
 import { useProjectStore } from "./projectStore";
 import { useSelectionStore } from "../selection/selectionStore";
+import { findNodeInTree } from "../../shared/utils/geometry";
 
 /**
  * Command to execute a batch/sequence of commands as a single atomic operation
@@ -539,16 +540,7 @@ export class UpdateMultipleNodesCommand implements Command {
   }
 }
 
-function findNodeInTree(tree: BaseNode, nodeId: string): BaseNode | null {
-  if (tree.id === nodeId) return tree;
-  if (tree.children) {
-    for (const child of tree.children) {
-      const res = findNodeInTree(child, nodeId);
-      if (res) return res;
-    }
-  }
-  return null;
-}
+
 
 export class GroupNodesCommand implements Command {
   private parentId: string;

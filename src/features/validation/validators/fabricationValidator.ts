@@ -1,18 +1,19 @@
 import type { Project, BaseNode, RingNode, WindowNode } from "../../../shared/types/project";
 import type { ValidationIssue, Validator } from "../validationTypes";
 
-function getWindowBoundingRadius(shape: any): number {
+function getWindowBoundingRadius(shape: BaseNode | Record<string, any> | undefined): number {
   if (!shape) return 0;
-  if (shape.type === "circle") {
-    return shape.radius || 0;
+  const s = shape as Record<string, any>;
+  if (s.type === "circle") {
+    return s.radius || 0;
   }
-  if (shape.type === "rectangle") {
-    const w = shape.width || 0;
-    const h = shape.height || 0;
+  if (s.type === "rectangle") {
+    const w = s.width || 0;
+    const h = s.height || 0;
     return Math.hypot(w / 2, h / 2);
   }
-  if (shape.type === "polygon") {
-    return shape.radius || 0;
+  if (s.type === "polygon") {
+    return s.radius || 0;
   }
   return 0;
 }

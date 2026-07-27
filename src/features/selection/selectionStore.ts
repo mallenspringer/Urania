@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useProjectStore } from "../project/projectStore";
+import { findNodeInTree, isDescendantOf } from "../../shared/utils/geometry";
 
 export interface SelectionItem {
   id: string;
@@ -17,27 +18,7 @@ interface SelectionState {
   setSelection: (items: SelectionItem[]) => void;
 }
 
-// Helper to find a node in the project tree
-function findNodeInTree(node: any, id: string): any | null {
-  if (node.id === id) return node;
-  if (node.children) {
-    for (const child of node.children) {
-      const found = findNodeInTree(child, id);
-      if (found) return found;
-    }
-  }
-  return null;
-}
 
-// Helper to check if a targetId is a descendant of parentNode
-function isDescendantOf(parentNode: any, targetId: string): boolean {
-  if (!parentNode.children) return false;
-  for (const child of parentNode.children) {
-    if (child.id === targetId) return true;
-    if (isDescendantOf(child, targetId)) return true;
-  }
-  return false;
-}
 
 export const useSelectionStore = create<SelectionState>((set) => ({
   selectedItems: [],

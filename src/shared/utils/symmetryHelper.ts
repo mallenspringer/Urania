@@ -72,7 +72,7 @@ export function computeSymmetryOffsets(
 export function calculateSymmetryGroupUpdates(
   mechanism: BaseNode,
   activeNode: BaseNode,
-  patch: any
+  patch: Record<string, any>
 ): { nodeId: string; oldNode: BaseNode; newNode: BaseNode }[] {
   if (!activeNode.symmetryGroupId) {
     return [];
