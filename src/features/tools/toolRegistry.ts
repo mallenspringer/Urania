@@ -4,6 +4,7 @@ import { rectangleTool, circleTool, polygonTool, trapezoidTool, crescentTool, st
 import { windowCircleTool, windowRectangleTool, windowPolygonTool } from "./windowTool";
 import { textTool, arcTextTool } from "./textTool";
 import { curveTool, arcTool } from "./curveTool";
+import { discTabTool } from "./discTabTool";
 
 class Registry {
   private tools = new Map<string, Tool>();
@@ -34,6 +35,7 @@ toolRegistry.register(starTool);
 toolRegistry.register(lineTool);
 toolRegistry.register(curveTool);
 toolRegistry.register(arcTool);
+toolRegistry.register(discTabTool);
 toolRegistry.register(windowCircleTool);
 toolRegistry.register(windowRectangleTool);
 toolRegistry.register(windowPolygonTool);

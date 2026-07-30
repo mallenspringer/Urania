@@ -90,6 +90,7 @@ export default function App() {
   const { issues, autoRepairDuplicates } = useValidationStore();
   const [activeSidebarTab, setActiveSidebarTab] = useState<"rings" | "validation">("rings");
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showCanvasInteractionModal, setShowCanvasInteractionModal] = useState(true);
 
   // Responsive auto-collapse and auto-restore on window resize
   const prevWidthRef = useRef<number>(typeof window !== "undefined" ? window.innerWidth : 1200);
@@ -392,7 +393,7 @@ export default function App() {
           <div className="brand-logo">U</div>
           <div>
             <h1>Urania</h1>
-            <p className="subtitle">Circular Paper Mechanism Modeler</p>
+            <p className="subtitle">Vovelle Modeler</p>
           </div>
         </div>
 
@@ -463,10 +464,6 @@ export default function App() {
           <aside className={`sidebar ${isLeftSidebarOpen ? "" : "collapsed"}`}>
             {/* Volvelle Details Card */}
             <div className="sidebar-section">
-              <h3 className="section-title">
-                <Info size={14} />
-                Mechanism Metadata
-              </h3>
               <div className="info-card">
                 <label>Project Name</label>
                 <input
@@ -811,24 +808,15 @@ export default function App() {
               )}
             </div>
 
-            {/* Quick Help Card */}
+            {/* Quick Help Link */}
             <div className="sidebar-section footer-info">
-              <div className="help-box">
-                <h4>
-                  <FileCode size={13} /> Canvas Interaction
-                </h4>
-                <ul>
-                  <li>
-                    <strong>Scroll Wheel</strong>: Logarithmic Zoom
-                  </li>
-                  <li>
-                    <strong>Spacebar + Drag</strong>: Pan Viewport
-                  </li>
-                  <li>
-                    <strong>Middle Mouse Drag</strong>: Pan Viewport
-                  </li>
-                </ul>
-              </div>
+              <button
+                className="btn btn-sm btn-secondary"
+                style={{ width: "100%", justifyContent: "center", gap: "6px" }}
+                onClick={() => setShowCanvasInteractionModal(true)}
+              >
+                <FileCode size={13} /> Canvas Interaction
+              </button>
             </div>
           </aside>
 
@@ -865,14 +853,62 @@ export default function App() {
           project={project}
           onClose={() => setShowExportModal(false)}
         />
-      )}
-
-      {ringPendingDelete && (
+      )}      {ringPendingDelete && (
         <DeleteLayerModal
           ring={ringPendingDelete}
           onConfirm={handleConfirmDeleteRing}
           onCancel={() => setRingPendingDelete(null)}
         />
+      )}
+
+      {showCanvasInteractionModal && !showDashboard && (
+        <div className="modal-backdrop" onClick={() => setShowCanvasInteractionModal(false)} style={{ zIndex: 2000 }}>
+          <div
+            className="export-modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "280px", width: "90%", padding: "14px 16px", borderRadius: "10px" }}
+          >
+            <div className="modal-header" style={{ marginBottom: "10px", paddingBottom: "8px", borderBottom: "1px solid #232530" }}>
+              <div className="modal-title-group" style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <FileCode size={16} className="modal-icon" style={{ color: "#818cf8" }} />
+                <h2 style={{ fontSize: "13px", margin: 0, color: "#f8fafc", fontWeight: 700 }}>Canvas Interaction</h2>
+              </div>
+              <button
+                className="btn-icon"
+                onClick={() => setShowCanvasInteractionModal(false)}
+                title="Close Modal"
+                style={{ background: "transparent", border: "none", color: "#94a3b8", cursor: "pointer", padding: 0 }}
+              >
+                <XCircle size={15} />
+              </button>
+            </div>
+            <div className="modal-body" style={{ color: "#cbd5e1", fontSize: "11px" }}>
+              <ul style={{ listStyle: "none", padding: 0, margin: 0, display: "flex", flexDirection: "column", gap: "6px" }}>
+                <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(255, 255, 255, 0.04)", padding: "6px 8px", borderRadius: "4px" }}>
+                  <span style={{ fontWeight: 600, color: "#f1f5f9" }}>Scroll Wheel</span>
+                  <span style={{ color: "#818cf8", fontWeight: 700 }}>Zoom</span>
+                </li>
+                <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(255, 255, 255, 0.04)", padding: "6px 8px", borderRadius: "4px" }}>
+                  <span style={{ fontWeight: 600, color: "#f1f5f9" }}>Spacebar + Drag</span>
+                  <span style={{ color: "#818cf8", fontWeight: 700 }}>Pan Canvas</span>
+                </li>
+                <li style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: "rgba(255, 255, 255, 0.04)", padding: "6px 8px", borderRadius: "4px" }}>
+                  <span style={{ fontWeight: 600, color: "#f1f5f9" }}>Middle Mouse Drag</span>
+                  <span style={{ color: "#818cf8", fontWeight: 700 }}>Pan Canvas</span>
+                </li>
+              </ul>
+            </div>
+            <div style={{ marginTop: "12px", display: "flex", justifyContent: "flex-end" }}>
+              <button
+                className="btn btn-primary"
+                onClick={() => setShowCanvasInteractionModal(false)}
+                style={{ padding: "4px 12px", fontSize: "11px", borderRadius: "5px" }}
+              >
+                Got It
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {isAnimatingIntro && (

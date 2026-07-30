@@ -90,7 +90,7 @@ describe("Validation System", () => {
     expect(errors[0].severity).toBe("error");
   });
 
-  it("should raise a warning for overlapping concentric ring bands", () => {
+  it("should allow overlapping concentric ring bands without raising warnings", () => {
     const project = useProjectStore.getState().project;
     const ringA: RingNode = {
       id: "ring-a",
@@ -111,7 +111,7 @@ describe("Validation System", () => {
       visible: true,
       locked: false,
       transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
-      innerRadius: 150, // overlaps from 150 to 200
+      innerRadius: 150, // overlapping concentric ring
       outerRadius: 250,
       rotation: 0,
       children: [],
@@ -127,11 +127,10 @@ describe("Validation System", () => {
 
     const issues = useValidationStore.getState().validateProject(updated);
     const overlaps = issues.filter((i) => i.code === "RING_OVERLAP");
-    expect(overlaps).toHaveLength(1);
-    expect(overlaps[0].severity).toBe("warning");
+    expect(overlaps).toHaveLength(0);
   });
 
-  it("should raise warning for fabrication thin bridges and small cutouts", () => {
+  it("should raise warning for fabrication thin bridges (< 4px) and small cutouts (< 3px)", () => {
     const project = useProjectStore.getState().project;
     const ring: RingNode = {
       id: "ring-base",
@@ -144,14 +143,14 @@ describe("Validation System", () => {
       outerRadius: 200,
       rotation: 0,
       children: [
-        // Window A too close to inner edge (d=112, r=10 -> inner edge=102, innerRadius=100, bridge=2px < 10px)
+        // Window A too close to inner edge (d=102, r=10 -> inner edge=92, innerRadius=100, bridge=-8px < 4px)
         {
           id: "win-a",
           type: "window",
           name: "Window A",
           visible: true,
           locked: false,
-          transform: { x: 112, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
+          transform: { x: 102, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
           style: {},
           export: { artwork: false, cut: true, fold: false },
           shape: {
@@ -165,7 +164,7 @@ describe("Validation System", () => {
             radius: 10,
           },
         } as any,
-        // Window B: extremely small cutout (r=3px -> diameter=6px < 10px)
+        // Window B: extremely small cutout (r=1px -> diameter=2px < 3px)
         {
           id: "win-b",
           type: "window",
@@ -183,7 +182,7 @@ describe("Validation System", () => {
             transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
             style: {},
             export: { artwork: false, cut: true, fold: false },
-            radius: 3,
+            radius: 1,
           },
         } as any,
       ],

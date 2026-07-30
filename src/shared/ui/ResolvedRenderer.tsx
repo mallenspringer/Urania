@@ -608,6 +608,75 @@ const KonvaImageRenderer: React.FC<{ node: ResolvedNode; assets: any[] }> = ({
   );
 };
 
+/**
+ * Renders a disc-attached tab in its local canvas space.
+ * The tab Group is already positioned+rotated to the ring edge by the engine;
+ * we only need to draw the tab shape starting at y=0 (ring surface) and
+ * protruding to y=+height (radially outward).
+ */
+const DiscTabRenderer: React.FC<{ node: ResolvedNode }> = ({ node }) => {
+  const { width = 30, height = 18, cornerRadius = 4, tabShape = "semicircular", label = "", style = {} } = node.renderData;
+  const fill = style.fill || "#6366f1";
+  const stroke = style.stroke || "#3730a3";
+  const strokeWidth = style.strokeWidth ?? 1.5;
+  const hw = width / 2;
+  const cr = Math.min(cornerRadius, hw, height / 2);
+
+  return (
+    <Group>
+      <Shape
+        sceneFunc={(ctx, shape) => {
+          ctx.beginPath();
+          if (tabShape === "rectangular") {
+            ctx.moveTo(-hw, 0);
+            ctx.lineTo(-hw, Math.max(0, height - cr));
+            ctx.arcTo(-hw, height, -hw + cr, height, cr);
+            ctx.lineTo(hw - cr, height);
+            ctx.arcTo(hw, height, hw, Math.max(0, height - cr), cr);
+            ctx.lineTo(hw, 0);
+            ctx.closePath();
+          } else if (tabShape === "semicircular") {
+            const domeR = Math.min(hw, height);
+            const rectH = Math.max(0, height - domeR);
+            ctx.moveTo(-hw, 0);
+            ctx.lineTo(-hw, rectH);
+            ctx.arc(0, rectH, domeR, Math.PI, 0, true);
+            ctx.lineTo(hw, 0);
+            ctx.closePath();
+          } else {
+            // trapezoidal — narrower at top
+            const topHw = hw * 0.6;
+            ctx.moveTo(-hw, 0);
+            ctx.lineTo(-topHw, height);
+            ctx.lineTo(topHw, height);
+            ctx.lineTo(hw, 0);
+            ctx.closePath();
+          }
+          ctx.fillStrokeShape(shape);
+        }}
+        fill={fill}
+        stroke={stroke}
+        strokeWidth={strokeWidth}
+      />
+      {label && (
+        <Text
+          text={label}
+          x={-hw}
+          y={height * 0.25}
+          width={width}
+          height={height * 0.5}
+          fontSize={Math.min(10, height * 0.4)}
+          fontFamily="Outfit, sans-serif"
+          fill="#ffffff"
+          align="center"
+          verticalAlign="middle"
+          listening={false}
+        />
+      )}
+    </Group>
+  );
+};
+
 const ArcTextRenderer: React.FC<{ node: ResolvedNode }> = ({ node }) => {
   const {
     content,
@@ -1118,6 +1187,9 @@ const renderSpecificNode = (node: ResolvedNode, assets: any[]) => {
 
     case "tab":
       return <TabRenderer node={node} />;
+
+    case "discTab":
+      return <DiscTabRenderer node={node} />;
 
     default:
       return null;

@@ -1,5 +1,5 @@
 import React from "react";
-import { Group, Circle, Rect, Arc, Line } from "react-konva";
+import { Group, Circle, Rect, Arc, Line, Shape } from "react-konva";
 import type { ResolvedNode } from "../../features/runtime/mechanismEngine";
 import { useSelectionStore } from "../../features/selection/selectionStore";
 import { getArcTextCharPositions } from "../utils/textGeometry";
@@ -17,6 +17,55 @@ const SelectionOutline: React.FC<SelectionOutlineProps> = ({ node, isActive }) =
   const strokeColor = isActive ? "#c084fc" : "#818cf8";
   const strokeWidth = 1.5;
   const dash = [4, 4];
+
+  // Draw outline for disc-attached tabs
+  if (node.type === "discTab") {
+    const { width: tw = 30, height: th = 18, cornerRadius = 4, tabShape = "semicircular" } = node.renderData;
+    const hw = tw / 2;
+    const cr = Math.min(cornerRadius, hw, th / 2);
+    const sx = Math.abs(scaleX) || 1;
+    const sy = Math.abs(scaleY) || 1;
+    const invStroke = strokeWidth / Math.min(sx, sy);
+
+    return (
+      <Group x={x} y={y} rotation={rotation} scaleX={scaleX} scaleY={scaleY} listening={false}>
+        <Shape
+          sceneFunc={(ctx, shape) => {
+            ctx.beginPath();
+            if (tabShape === "rectangular") {
+              ctx.moveTo(-hw, 0);
+              ctx.lineTo(-hw, Math.max(0, th - cr));
+              ctx.arcTo(-hw, th, -hw + cr, th, cr);
+              ctx.lineTo(hw - cr, th);
+              ctx.arcTo(hw, th, hw, Math.max(0, th - cr), cr);
+              ctx.lineTo(hw, 0);
+              ctx.closePath();
+            } else if (tabShape === "semicircular") {
+              const domeR = Math.min(hw, th);
+              const rectH = Math.max(0, th - domeR);
+              ctx.moveTo(-hw, 0);
+              ctx.lineTo(-hw, rectH);
+              ctx.arc(0, rectH, domeR, Math.PI, 0, true);
+              ctx.lineTo(hw, 0);
+              ctx.closePath();
+            } else {
+              const topHw = hw * 0.6;
+              ctx.moveTo(-hw, 0);
+              ctx.lineTo(-topHw, th);
+              ctx.lineTo(topHw, th);
+              ctx.lineTo(hw, 0);
+              ctx.closePath();
+            }
+            ctx.fillStrokeShape(shape);
+          }}
+          stroke={strokeColor}
+          strokeWidth={invStroke}
+          dash={[4 / sx, 4 / sy]}
+          listening={false}
+        />
+      </Group>
+    );
+  }
 
   if (node.type === "ring") {
     const outerRadius = node.renderData.outerRadius || 100;

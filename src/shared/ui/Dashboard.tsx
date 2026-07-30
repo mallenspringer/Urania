@@ -212,8 +212,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <div className="hero-content">
           <h2>Welcome to Urania</h2>
           <p>
-            An offline-first, browser-based environment for designing circular paper computers,
-            reveal volvelles, and rotational information mechanics.
+            A tool for designing vovelles and paper computers.
           </p>
         </div>
       </div>
@@ -232,7 +231,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <div className="resume-card active-project-card" onClick={onResumeActiveProject}>
                     <div className="resume-card-header">
                       <span className="badge-active">ACTIVE SESSION</span>
-                      <h4>Return to Workspace</h4>
+                      <h4>Return to Canvas</h4>
                     </div>
                     <p className="resume-desc">Resume your current edits without resetting the undo history stack.</p>
                     <button className="btn btn-primary btn-sm">
@@ -330,11 +329,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
             </h3>
             <div className="help-widget-content">
               <div className="help-section-item">
-                <h5>Canvas Viewport Navigation</h5>
+                <h5>Canvas Navigation</h5>
                 <ul>
-                  <li><strong>Scroll Wheel</strong>: Logarithmic Zoom</li>
-                  <li><strong>Space + Drag</strong>: Pan Workspace</li>
-                  <li><strong>Middle-Click + Drag</strong>: Pan Workspace</li>
+                  <li><strong>Scroll Wheel</strong>: Zoom</li>
+                  <li><strong>Space + Drag</strong>: Pan Canvas</li>
+                  <li><strong>Middle-Click + Drag</strong>: Pan Canvas</li>
                 </ul>
               </div>
 
@@ -344,18 +343,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   <li><strong>V Key</strong>: Switch to Select Tool</li>
                   <li><strong>Double-Click Text</strong>: Edit text contents directly</li>
                   <li><strong>Drag Handles</strong>: Resize or rotate elements</li>
-                </ul>
-              </div>
-
-              <div className="help-section-item">
-                <h5>Circular Mechanics Glossary</h5>
-                <ul>
-                  <li>
-                    <strong>Volvelle</strong>: A historical circular computer composed of rotatable paper dials centered on a pivot pin.
-                  </li>
-                  <li>
-                    <strong>Reveal Window</strong>: A cutout mask on an upper dial that selectively displays indicators or sectors placed on a lower dial.
-                  </li>
                 </ul>
               </div>
             </div>

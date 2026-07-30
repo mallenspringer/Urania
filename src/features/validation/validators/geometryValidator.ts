@@ -81,6 +81,42 @@ function checkGeometries(node: BaseNode, issues: ValidationIssue[]) {
         entityType: node.type,
       });
     }
+  } else if (node.type === "star") {
+    const star = node as any;
+    if (star.outerRadius === undefined || star.outerRadius <= 0 || star.innerRadius === undefined || star.innerRadius <= 0 || (star.numPoints !== undefined && star.numPoints < 3)) {
+      issues.push({
+        id: `invalid-star-bounds-${node.id}`,
+        severity: "error",
+        code: "INVALID_SHAPE_BOUNDS",
+        message: `Star '${node.name || "Unnamed"}' has invalid inner/outer radius or points count.`,
+        entityId: node.id,
+        entityType: node.type,
+      });
+    }
+  } else if (node.type === "trapezoid") {
+    const trap = node as any;
+    if (trap.baseWidth === undefined || trap.baseWidth <= 0 || trap.topWidth === undefined || trap.topWidth <= 0 || trap.height === undefined || trap.height <= 0) {
+      issues.push({
+        id: `invalid-trap-bounds-${node.id}`,
+        severity: "error",
+        code: "INVALID_SHAPE_BOUNDS",
+        message: `Trapezoid '${node.name || "Unnamed"}' has invalid base width, top width, or height.`,
+        entityId: node.id,
+        entityType: node.type,
+      });
+    }
+  } else if (node.type === "crescent") {
+    const cres = node as any;
+    if (cres.radius === undefined || cres.radius <= 0) {
+      issues.push({
+        id: `invalid-crescent-bounds-${node.id}`,
+        severity: "error",
+        code: "INVALID_SHAPE_BOUNDS",
+        message: `Crescent '${node.name || "Unnamed"}' has an invalid radius (${cres.radius}).`,
+        entityId: node.id,
+        entityType: node.type,
+      });
+    }
   } else if (node.type === "line") {
     const line = node as any;
     if (line.length === undefined || line.length <= 0) {
@@ -148,6 +184,51 @@ function checkGeometries(node: BaseNode, issues: ValidationIssue[]) {
           entityId: node.id,
           entityType: node.type,
         });
+      } else if (shape.type === "star" && (shape.outerRadius === undefined || shape.outerRadius <= 0 || shape.innerRadius === undefined || shape.innerRadius <= 0)) {
+        issues.push({
+          id: `invalid-window-shape-${node.id}`,
+          severity: "error",
+          code: "INVALID_SHAPE_BOUNDS",
+          message: `Window '${node.name || "Unnamed"}' has a cutout star with invalid inner or outer radius.`,
+          entityId: node.id,
+          entityType: node.type,
+        });
+      } else if (shape.type === "trapezoid" && (shape.baseWidth === undefined || shape.baseWidth <= 0 || shape.topWidth === undefined || shape.topWidth <= 0 || shape.height === undefined || shape.height <= 0)) {
+        issues.push({
+          id: `invalid-window-shape-${node.id}`,
+          severity: "error",
+          code: "INVALID_SHAPE_BOUNDS",
+          message: `Window '${node.name || "Unnamed"}' has a cutout trapezoid with invalid dimensions.`,
+          entityId: node.id,
+          entityType: node.type,
+        });
+      } else if (shape.type === "crescent" && (shape.radius === undefined || shape.radius <= 0)) {
+        issues.push({
+          id: `invalid-window-shape-${node.id}`,
+          severity: "error",
+          code: "INVALID_SHAPE_BOUNDS",
+          message: `Window '${node.name || "Unnamed"}' has a cutout crescent with an invalid radius.`,
+          entityId: node.id,
+          entityType: node.type,
+        });
+      } else if (shape.type === "line" && (shape.length === undefined || shape.length <= 0)) {
+        issues.push({
+          id: `invalid-window-shape-${node.id}`,
+          severity: "error",
+          code: "INVALID_SHAPE_BOUNDS",
+          message: `Window '${node.name || "Unnamed"}' has a cutout line with an invalid length.`,
+          entityId: node.id,
+          entityType: node.type,
+        });
+      } else if ((shape.type === "text" || shape.type === "arcText") && (shape.fontSize !== undefined && shape.fontSize <= 0)) {
+        issues.push({
+          id: `invalid-window-shape-${node.id}`,
+          severity: "error",
+          code: "INVALID_SHAPE_BOUNDS",
+          message: `Window '${node.name || "Unnamed"}' has a cutout text glyph with an invalid font size.`,
+          entityId: node.id,
+          entityType: node.type,
+        });
       }
     }
   }
@@ -168,26 +249,6 @@ export const geometryValidator: Validator = {
 
     collectRings(project.mechanism, rings);
     checkGeometries(project.mechanism, issues);
-
-    // Check concentric ring overlaps
-    for (let i = 0; i < rings.length; i++) {
-      for (let j = i + 1; j < rings.length; j++) {
-        const ringA = rings[i];
-        const ringB = rings[j];
-        const maxInner = Math.max(ringA.innerRadius, ringB.innerRadius);
-        const minOuter = Math.min(ringA.outerRadius, ringB.outerRadius);
-        if (maxInner < minOuter) {
-          issues.push({
-            id: `ring-overlap-${ringA.id}-${ringB.id}`,
-            severity: "warning",
-            code: "RING_OVERLAP",
-            message: `Ring '${ringA.name || ringA.id}' and Ring '${ringB.name || ringB.id}' have overlapping radial bands.`,
-            entityId: ringA.id,
-            entityType: "ring",
-          });
-        }
-      }
-    }
 
     return issues;
   },

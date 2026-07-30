@@ -21,21 +21,6 @@ function traverseTree(
     seenIds.add(node.id);
   }
 
-  // Check specific node types: Radial Pattern copies check
-  if (node.type === "radialPattern") {
-    const patternNode = node as any;
-    if (patternNode.copies === undefined || patternNode.copies <= 0) {
-      issues.push({
-        id: `invalid-pattern-copies-${node.id}`,
-        severity: "error",
-        code: "INVALID_PATTERN_COPIES",
-        message: `Radial pattern '${node.name || "Unnamed"}' must have copies > 0.`,
-        entityId: node.id,
-        entityType: node.type,
-      });
-    }
-  }
-
   if (node.children) {
     for (const child of node.children) {
       traverseTree(child, seenIds, duplicateIds, issues);

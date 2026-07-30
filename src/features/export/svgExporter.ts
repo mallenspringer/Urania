@@ -1,6 +1,7 @@
 import type { Project, Asset } from "../../shared/types/project";
 import { resolveProject, type ResolvedNode } from "../runtime/mechanismEngine";
 import { getArcTextCharPositions } from "../../shared/utils/textGeometry";
+import { getRingRadiusAtAngle, getRingSurfaceNormalAngle } from "../../shared/utils/geometry";
 
 export interface SVGExportOptions {
   layer: "artwork" | "cut" | "fold" | "all";
@@ -80,7 +81,7 @@ export function getPolygonPath(sides: number, radius: number, edgeCurvature: num
     vertices.push({ x: -w, y: h * 0.8 });
   } else {
     for (let i = 0; i < numSides; i++) {
-      const angle = (i * 2 * Math.PI) / numSides;
+      const angle = (i * 2 * Math.PI) / numSides - Math.PI / 2;
       vertices.push({
         x: radius * Math.cos(angle),
         y: radius * Math.sin(angle),
@@ -121,12 +122,107 @@ function getStarPath(numPoints: number, innerRadius: number, outerRadius: number
   return `M ${pts.join(' L ')} Z`;
 }
 
+// Builds a continuous outer perimeter cut path for a ring with attached disc tabs
+function getRingOuterCutPathWithDiscTabs(ringNode: ResolvedNode, tabs: ResolvedNode[]): string {
+  const outerRadius = ringNode.renderData.outerRadius || 100;
+  if (tabs.length === 0) {
+    return `M 0,${-outerRadius} A ${outerRadius},${outerRadius} 0 1,1 0,${outerRadius} A ${outerRadius},${outerRadius} 0 1,1 0,${-outerRadius} Z`;
+  }
+
+  const sortedTabs = [...tabs].sort((a, b) => (a.renderData.angle || 0) - (b.renderData.angle || 0));
+  const ringData = ringNode.renderData;
+
+  const tabSpans = sortedTabs.map((tab) => {
+    const angle = (tab.renderData.angle || 0) % 360;
+    const w = tab.renderData.width || 30;
+    const h = tab.renderData.height || 18;
+    const shape = tab.renderData.tabShape || "semicircular";
+    const rEdge = getRingRadiusAtAngle(ringData, angle);
+    const halfSpan = (Math.asin(Math.min(0.99, (w / 2) / rEdge)) * 180) / Math.PI;
+    const startAng = ((angle - halfSpan) % 360 + 360) % 360;
+    const endAng = ((angle + halfSpan) % 360 + 360) % 360;
+    return { tab, angle, w, h, shape, startAng, endAng, halfSpan, rEdge };
+  });
+
+  let d = "";
+
+  for (let i = 0; i < tabSpans.length; i++) {
+    const cur = tabSpans[i];
+    const next = tabSpans[(i + 1) % tabSpans.length];
+
+    const startRad = (cur.startAng * Math.PI) / 180;
+    const endRad = (cur.endAng * Math.PI) / 180;
+
+    const rStart = getRingRadiusAtAngle(ringData, cur.startAng);
+    const rEnd = getRingRadiusAtAngle(ringData, cur.endAng);
+
+    const xStart = rStart * Math.cos(startRad);
+    const yStart = rStart * Math.sin(startRad);
+    const xEnd = rEnd * Math.cos(endRad);
+    const yEnd = rEnd * Math.sin(endRad);
+
+    if (i === 0) {
+      d += `M ${xStart.toFixed(2)} ${yStart.toFixed(2)}`;
+    }
+
+    const peakR = cur.rEdge + cur.h;
+    if (cur.shape === "semicircular") {
+      const midRad = (cur.angle * Math.PI) / 180;
+      const xMid = peakR * Math.cos(midRad);
+      const yMid = peakR * Math.sin(midRad);
+      d += ` A ${cur.h} ${cur.h} 0 0 1 ${xMid.toFixed(2)} ${yMid.toFixed(2)}`;
+      d += ` A ${cur.h} ${cur.h} 0 0 1 ${xEnd.toFixed(2)} ${yEnd.toFixed(2)}`;
+    } else if (cur.shape === "trapezoidal") {
+      const topHw = cur.w * 0.6;
+      const topHalfSpan = (Math.asin(Math.min(0.99, (topHw / 2) / peakR)) * 180) / Math.PI;
+      const topStartRad = ((cur.angle - topHalfSpan) * Math.PI) / 180;
+      const topEndRad = ((cur.angle + topHalfSpan) * Math.PI) / 180;
+
+      const xTopStart = peakR * Math.cos(topStartRad);
+      const yTopStart = peakR * Math.sin(topStartRad);
+      const xTopEnd = peakR * Math.cos(topEndRad);
+      const yTopEnd = peakR * Math.sin(topEndRad);
+
+      d += ` L ${xTopStart.toFixed(2)} ${yTopStart.toFixed(2)}`;
+      d += ` L ${xTopEnd.toFixed(2)} ${yTopEnd.toFixed(2)}`;
+      d += ` L ${xEnd.toFixed(2)} ${yEnd.toFixed(2)}`;
+    } else {
+      const xPeakStart = peakR * Math.cos(startRad);
+      const yPeakStart = peakR * Math.sin(startRad);
+      const xPeakEnd = peakR * Math.cos(endRad);
+      const yPeakEnd = peakR * Math.sin(endRad);
+
+      d += ` L ${xPeakStart.toFixed(2)} ${yPeakStart.toFixed(2)}`;
+      d += ` A ${peakR} ${peakR} 0 0 1 ${xPeakEnd.toFixed(2)} ${yPeakEnd.toFixed(2)}`;
+      d += ` L ${xEnd.toFixed(2)} ${yEnd.toFixed(2)}`;
+    }
+
+    const nextStartRad = (next.startAng * Math.PI) / 180;
+    const rNextStart = getRingRadiusAtAngle(ringData, next.startAng);
+    const xNextStart = rNextStart * Math.cos(nextStartRad);
+    const yNextStart = rNextStart * Math.sin(nextStartRad);
+
+    if (ringData.ringShape === "polygon") {
+      d += ` L ${xNextStart.toFixed(2)} ${yNextStart.toFixed(2)}`;
+    } else {
+      let sweep = next.startAng - cur.endAng;
+      if (sweep < 0) sweep += 360;
+      const largeArc = sweep > 180 ? 1 : 0;
+      d += ` A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${xNextStart.toFixed(2)} ${yNextStart.toFixed(2)}`;
+    }
+  }
+
+  d += " Z";
+  return d;
+}
+
 // Converts a node to raw SVG string based on export layer
 function renderNodeToSVG(
   node: ResolvedNode,
   layer: "artwork" | "cut" | "fold",
   embedAssets: boolean,
-  assets: Asset[]
+  assets: Asset[],
+  allNodes: ResolvedNode[] = []
 ): string {
   const { style, innerRadius, outerRadius, startAngle, endAngle, radius, width, height, length, thickness, sides, content, fontFamily, fontSize, sweepAngle } = node.renderData;
 
@@ -162,7 +258,10 @@ function renderNodeToSVG(
 
       if (layer === "cut") {
         let cuts = "";
-        if (isPolygon) {
+        const discTabs = allNodes.filter((n) => n.ringId === node.id && n.type === "discTab");
+        if (discTabs.length > 0) {
+          cuts += `<path d="${getRingOuterCutPathWithDiscTabs(node, discTabs)}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
+        } else if (isPolygon) {
           cuts += `<path d="${getPolygonPath(polySides, outerRadius, curvature)}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
         } else {
           cuts += `<circle cx="0" cy="0" r="${outerRadius}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
@@ -296,6 +395,40 @@ function renderNodeToSVG(
       }
 
       return `<g id="tab-control-${node.id}" class="tab-control-element" data-target-ring="${targetRingId}" data-gear-ratio="${gearRatio}" data-track-sweep="${trackSweep}" data-initial-angle="${angle}" data-radius="${radius}" ${transformAttr}>${shapeSvg}${labelSvg}</g>`;
+    }
+
+    case "discTab": {
+      if (layer !== "artwork") return "";
+      const w = node.renderData.width || 30;
+      const h = node.renderData.height || 18;
+      const cornerRadius = node.renderData.cornerRadius || 4;
+      const tabShape = node.renderData.tabShape || "semicircular";
+      const label = node.renderData.label || "";
+      const tabFill = style?.fill || "#6366f1";
+      const tabStroke = style?.stroke || "#3730a3";
+      const tabStrokeW = style?.strokeWidth ?? 1.5;
+
+      const hw = w / 2;
+      const cr = Math.min(cornerRadius, hw, h / 2);
+
+      let shapeSvg = "";
+      if (tabShape === "rectangular") {
+        shapeSvg = `<path d="M -${hw},0 L -${hw},${h - cr} A ${cr},${cr} 0 0,0 -${hw - cr},${h} L ${hw - cr},${h} A ${cr},${cr} 0 0,0 ${hw},${h - cr} L ${hw},0 Z" fill="${tabFill}" stroke="${tabStroke}" stroke-width="${tabStrokeW}" ${transformAttr} />`;
+      } else if (tabShape === "semicircular") {
+        const domeR = hw;
+        shapeSvg = `<path d="M -${hw},0 L -${hw},${h - domeR} A ${domeR},${domeR} 0 0,1 ${hw},${h - domeR} L ${hw},0 Z" fill="${tabFill}" stroke="${tabStroke}" stroke-width="${tabStrokeW}" ${transformAttr} />`;
+      } else {
+        const topHw = hw * 0.6;
+        shapeSvg = `<polygon points="-${hw},0 -${topHw},${h} ${topHw},${h} ${hw},0" fill="${tabFill}" stroke="${tabStroke}" stroke-width="${tabStrokeW}" ${transformAttr} />`;
+      }
+
+      let labelSvg = "";
+      if (label) {
+        const fontSize = Math.min(10, h * 0.4);
+        labelSvg = `<text x="0" y="${h * 0.5}" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${fontSize}" fill="#ffffff" ${transformAttr}>${label}</text>`;
+      }
+
+      return `<g id="disc-tab-${node.id}">${shapeSvg}${labelSvg}</g>`;
     }
 
     case "window": {
@@ -527,7 +660,7 @@ export function generateSVG(project: Project, options: SVGExportOptions): string
       if (!node.visible) return;
       if (!isNodeInLayer(node, lyr)) return;
 
-      const elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || []);
+      const elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || [], resolvedNodes);
       if (elSvg) {
         layerGroup += `\n    ${elSvg.replace(/\n/g, "\n    ")}`;
       }
@@ -545,7 +678,7 @@ export function generateSVG(project: Project, options: SVGExportOptions): string
       ringNodes.forEach((node) => {
         if (!isNodeInLayer(node, lyr)) return;
 
-        let elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || []);
+        let elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || [], resolvedNodes);
         if (!elSvg) return;
 
         // Apply masking (window cutouts on cover rings above)

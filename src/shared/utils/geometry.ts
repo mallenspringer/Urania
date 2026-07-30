@@ -4,6 +4,124 @@ import { Matrix2D } from "./matrix";
 import { normalizeAngle } from "./math";
 import { getArcTextCharPositions } from "./textGeometry";
 
+export function getPolygonPointAndNormalAtAngle(
+  ringData: { outerRadius: number; ringShape?: string; polygonSides?: number; edgeCurvature?: number },
+  angleDeg: number
+): { radius: number; normalAngle: number; px: number; py: number } {
+  const outerR = ringData.outerRadius || 100;
+  if (ringData.ringShape !== "polygon") {
+    const rad = (angleDeg * Math.PI) / 180;
+    return {
+      radius: outerR,
+      normalAngle: angleDeg,
+      px: outerR * Math.cos(rad),
+      py: outerR * Math.sin(rad),
+    };
+  }
+
+  const sides = Math.max(3, ringData.polygonSides || 6);
+  const curvature = ringData.edgeCurvature || 0;
+  const alphaRad = (2 * Math.PI) / sides;
+  const alphaDeg = 360 / sides;
+
+  const normDeg = ((angleDeg + 90) % 360 + 360) % 360;
+  const sideIndex = Math.floor(normDeg / alphaDeg);
+
+  const a1 = sideIndex * alphaRad - Math.PI / 2;
+  const a2 = (sideIndex + 1) * alphaRad - Math.PI / 2;
+
+  const v1 = { x: outerR * Math.cos(a1), y: outerR * Math.sin(a1) };
+  const v2 = { x: outerR * Math.cos(a2), y: outerR * Math.sin(a2) };
+
+  // Parameter t in [0, 1] for angleDeg within side span [a1, a2]
+  const normRad = (((angleDeg * Math.PI) / 180 + Math.PI / 2) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+  const startRadOnCircle = sideIndex * alphaRad;
+  let t = Math.max(0, Math.min(1, (normRad - startRadOnCircle) / alphaRad));
+
+  if (Math.abs(curvature) < 0.001) {
+    const px = (1 - t) * v1.x + t * v2.x;
+    const py = (1 - t) * v1.y + t * v2.y;
+    const radius = Math.hypot(px, py);
+    const sideMidAngleDeg = (sideIndex + 0.5) * alphaDeg - 90;
+    return {
+      radius,
+      normalAngle: sideMidAngleDeg,
+      px,
+      py,
+    };
+  }
+
+  // Curved polygon side (Quadratic Bezier curve matching renderer)
+  const mx = (v1.x + v2.x) / 2;
+  const my = (v1.y + v2.y) / 2;
+  const len = Math.hypot(mx, my);
+  const nx = len > 0 ? mx / len : 0;
+  const ny = len > 0 ? my / len : 0;
+
+  const offsetDist = curvature * (outerR * 0.4);
+  const cx = mx + nx * offsetDist;
+  const cy = my + ny * offsetDist;
+
+  // Binary search for exact parameter t where ray at angleDeg intersects B(t)
+  let tLow = 0;
+  let tHigh = 1;
+  for (let iter = 0; iter < 6; iter++) {
+    const oneMinusT = 1 - t;
+    const testPx = oneMinusT * oneMinusT * v1.x + 2 * oneMinusT * t * cx + t * t * v2.x;
+    const testPy = oneMinusT * oneMinusT * v1.y + 2 * oneMinusT * t * cy + t * t * v2.y;
+    const testAng = (Math.atan2(testPy, testPx) * 180) / Math.PI;
+    const diff = ((testAng - angleDeg + 540) % 360) - 180;
+
+    if (Math.abs(diff) < 0.01) break;
+
+    if (diff < 0) {
+      tLow = t;
+    } else {
+      tHigh = t;
+    }
+    t = (tLow + tHigh) / 2;
+  }
+
+  const oneMinusT = 1 - t;
+  const px = oneMinusT * oneMinusT * v1.x + 2 * oneMinusT * t * cx + t * t * v2.x;
+  const py = oneMinusT * oneMinusT * v1.y + 2 * oneMinusT * t * cy + t * t * v2.y;
+  const radius = Math.hypot(px, py);
+
+  // Tangent P'(t) = 2(1-t)(C - v1) + 2t(v2 - C)
+  const tx = 2 * oneMinusT * (cx - v1.x) + 2 * t * (v2.x - cx);
+  const ty = 2 * oneMinusT * (cy - v1.y) + 2 * t * (v2.y - cy);
+
+  let nxOut = -ty;
+  let nyOut = tx;
+  if (nxOut * px + nyOut * py < 0) {
+    nxOut = ty;
+    nyOut = -tx;
+  }
+
+  const normalAngle = (Math.atan2(nyOut, nxOut) * 180) / Math.PI;
+
+  return {
+    radius,
+    normalAngle: ((normalAngle % 360) + 360) % 360,
+    px,
+    py,
+  };
+}
+
+export function getRingRadiusAtAngle(
+  ringData: { outerRadius: number; ringShape?: string; polygonSides?: number; edgeCurvature?: number },
+  angleDeg: number
+): number {
+  return getPolygonPointAndNormalAtAngle(ringData, angleDeg).radius;
+}
+
+export function getRingSurfaceNormalAngle(
+  ringData: { outerRadius: number; ringShape?: string; polygonSides?: number; edgeCurvature?: number },
+  angleDeg: number
+): number {
+  return getPolygonPointAndNormalAtAngle(ringData, angleDeg).normalAngle;
+}
+
 export function findRingForNode(project: Project, nodeId: string): string | null {
   const rings = (project.mechanism.children || []).filter(
     (c) => c.type === "ring"
@@ -132,6 +250,11 @@ export function isPointInsideNode(pos: { x: number; y: number }, node: ResolvedN
       case "circle": {
         const r = node.renderData.radius || 10;
         return lp.x * lp.x + lp.y * lp.y <= r * r;
+      }
+      case "discTab": {
+        const w = node.renderData.width || 30;
+        const h = node.renderData.height || 18;
+        return lp.x >= -w / 2 && lp.x <= w / 2 && lp.y >= 0 && lp.y <= h;
       }
       case "rectangle": {
         const w = node.renderData.width || 0;

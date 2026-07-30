@@ -25,6 +25,7 @@ import {
   ChevronRight,
   Square,
   Trash2,
+  Bookmark,
 } from "lucide-react";
 
 // Deep merge helper to apply nested object patches safely
@@ -73,6 +74,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
 
   // Track local value states for text area/inputs to avoid keyboard lag
   useEffect(() => {
+    originalNodeRef.current = null;
     if (activeNode) {
       setLocalValState({
         name: activeNode.name || "",
@@ -205,6 +207,9 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
   };
 
   const handleTransientEdit = (patch: any) => {
+    if (!originalNodeRef.current && activeNode) {
+      originalNodeRef.current = JSON.parse(JSON.stringify(activeNode));
+    }
     const currentMechanism = JSON.parse(JSON.stringify(project.mechanism));
     if (linkSymmetry && activeNode?.symmetryGroupId) {
       const updates = calculateSymmetryGroupUpdates(currentMechanism, activeNode, patch);
@@ -1848,6 +1853,131 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* Disc-Attached Tab Settings */}
+      {activeNode.type === "discTab" && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Bookmark size={14} />
+            Disc Tab Parameters
+          </h3>
+          <div className="info-card" style={{ marginBottom: "10px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
+              <label style={{ margin: 0, fontWeight: 500 }}>Perimeter Position</label>
+              <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                <input
+                  type="number"
+                  id="disctab-angle"
+                  value={Math.round(activeNode.angle || 0)}
+                  min="0"
+                  max="360"
+                  onFocus={handleStartEdit}
+                  onChange={(e) => handleTransientEdit({ angle: ((parseFloat(e.target.value) || 0) % 360 + 360) % 360 })}
+                  onBlur={(e) => handleCommitEdit({ angle: ((parseFloat(e.target.value) || 0) % 360 + 360) % 360 })}
+                  style={{ width: "54px", padding: "2px 6px", fontSize: "12px", textAlign: "right" }}
+                />
+                <span style={{ fontSize: "12px", color: "#94a3b8" }}>°</span>
+              </div>
+            </div>
+            <input
+              type="range"
+              id="disctab-angle-slider"
+              min="0"
+              max="360"
+              step="1"
+              value={Math.round((activeNode.angle || 0) % 360 + 360) % 360}
+              onMouseDown={handleStartEdit}
+              onTouchStart={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ angle: parseFloat(e.target.value) || 0 })}
+              onMouseUp={(e) => handleCommitEdit({ angle: parseFloat((e.target as HTMLInputElement).value) || 0 })}
+              onTouchEnd={(e) => handleCommitEdit({ angle: parseFloat((e.target as HTMLInputElement).value) || 0 })}
+              style={{ width: "100%", accentColor: "#6366f1", cursor: "pointer" }}
+            />
+          </div>
+
+          <div className="info-card" style={{ marginBottom: "10px" }}>
+            <label>Tab Shape</label>
+            <select
+              id="disctab-shape-select"
+              value={activeNode.tabShape || "semicircular"}
+              onChange={(e) => commitImmediateField({ tabShape: e.target.value })}
+              style={{
+                backgroundColor: "#0b0c0f",
+                border: "1px solid #232530",
+                borderRadius: "6px",
+                color: "#f8fafc",
+                padding: "6px",
+                fontSize: "13px",
+                width: "100%",
+                marginTop: "4px",
+              }}
+            >
+              <option value="rectangular">Rectangular</option>
+              <option value="semicircular">Semicircular</option>
+              <option value="trapezoidal">Trapezoidal</option>
+            </select>
+          </div>
+
+          <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
+            <div>
+              <label>Width ({unitSymbol})</label>
+              <input
+                type="number"
+                id="disctab-width"
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.width ?? 30, activeUnit)}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+              />
+            </div>
+            <div>
+              <label>Height ({unitSymbol})</label>
+              <input
+                type="number"
+                id="disctab-height"
+                min="0.1"
+                step={stepVal}
+                value={formatUnitValue(activeNode.height ?? 18, activeUnit)}
+                onFocus={handleStartEdit}
+                onChange={(e) => handleTransientEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+                onBlur={(e) => handleCommitEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+              />
+            </div>
+          </div>
+
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <label>Corner Radius (px)</label>
+            <input
+              type="number"
+              id="disctab-corner-radius"
+              min="0"
+              max="50"
+              value={activeNode.cornerRadius ?? 4}
+              onFocus={handleStartEdit}
+              onChange={(e) => handleTransientEdit({ cornerRadius: Math.max(0, parseInt(e.target.value) || 0) })}
+              onBlur={(e) => handleCommitEdit({ cornerRadius: Math.max(0, parseInt(e.target.value) || 0) })}
+            />
+          </div>
+
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <label>Tab Face Label</label>
+            <input
+              type="text"
+              id="disctab-label-input"
+              placeholder="Optional text"
+              value={localValState.label ?? activeNode.label ?? ""}
+              onFocus={handleStartEdit}
+              onChange={(e) => {
+                setLocalValState((s) => ({ ...s, label: e.target.value }));
+                handleTransientEdit({ label: e.target.value });
+              }}
+              onBlur={(e) => handleCommitEdit({ label: e.target.value })}
+            />
+          </div>
         </div>
       )}
 

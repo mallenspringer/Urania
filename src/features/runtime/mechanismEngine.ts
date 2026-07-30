@@ -16,8 +16,10 @@ import type {
   RadialPatternNode,
   Transform,
   TabNode,
+  DiscTabNode,
 } from "../../shared/types/project";
 import { Matrix2D } from "../../shared/utils/matrix";
+import { getRingRadiusAtAngle, getRingSurfaceNormalAngle } from "../../shared/utils/geometry";
 
 export interface Bounds {
   x: number;
@@ -98,6 +100,18 @@ function resolveNode(
       .translate(tab.radius, 0)
       .rotate(node.transform?.rotation || 0)
       .scale(node.transform?.scaleX || 1, node.transform?.scaleY || 1);
+  } else if (node.type === "discTab" && ringContext) {
+    const dt = node as DiscTabNode;
+    const rEdge = getRingRadiusAtAngle(ringContext, dt.angle);
+    const normAngle = getRingSurfaceNormalAngle(ringContext, dt.angle);
+
+    const rad = (dt.angle * Math.PI) / 180;
+    const px = rEdge * Math.cos(rad);
+    const py = rEdge * Math.sin(rad);
+
+    localMatrix = Matrix2D.identity()
+      .translate(px, py)
+      .rotate(normAngle - 90);
   } else if (node.transform) {
     if (isRadial) {
       const rx = node.transform.x;
@@ -133,7 +147,14 @@ function resolveNode(
   if (node.type === "ring") {
     const ring = node as RingNode;
     localMatrix = localMatrix.rotate(ring.rotation);
-    ringContext = { id: ring.id, innerRadius: ring.innerRadius, outerRadius: ring.outerRadius };
+    ringContext = {
+      id: ring.id,
+      innerRadius: ring.innerRadius,
+      outerRadius: ring.outerRadius,
+      ringShape: ring.ringShape,
+      polygonSides: ring.polygonSides,
+      edgeCurvature: ring.edgeCurvature,
+    };
   }
 
   // Sector start angle rotation
@@ -369,6 +390,23 @@ function resolveNode(
       renderData.trackSweep = tab.trackSweep ?? 360;
       renderData.label = tab.label || "";
       bounds = { x: -tab.width / 2, y: -tab.height / 2, width: tab.width, height: tab.height };
+      break;
+    }
+    case "discTab": {
+      const dt = node as DiscTabNode;
+      renderData.angle = dt.angle;
+      renderData.edge = dt.edge;
+      renderData.width = dt.width;
+      renderData.height = dt.height;
+      renderData.cornerRadius = dt.cornerRadius;
+      renderData.tabShape = dt.tabShape;
+      renderData.label = dt.label || "";
+      // Supply parent ring geometry so the renderer can draw the arc base correctly
+      if (ringContext) {
+        renderData.outerRadius = ringContext.outerRadius;
+        renderData.innerRadius = ringContext.innerRadius;
+      }
+      bounds = { x: -dt.width / 2, y: 0, width: dt.width, height: dt.height };
       break;
     }
     case "curve": {

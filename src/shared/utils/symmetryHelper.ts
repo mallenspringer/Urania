@@ -170,7 +170,11 @@ export function calculateSymmetryGroupUpdates(
     // 2. Property & Style propagation
     Object.keys(patch).forEach((key) => {
       if (key !== "transform") {
-        if (typeof patch[key] === "object" && patch[key] !== null && !Array.isArray(patch[key])) {
+        if (key === "angle" && newMemberCopy.type === "discTab") {
+          const deltaIdx = idx - primaryIndex;
+          const memberAngle = (patch.angle + deltaIdx * stepDeg) % 360;
+          newMemberCopy.angle = (memberAngle + 360) % 360;
+        } else if (typeof patch[key] === "object" && patch[key] !== null && !Array.isArray(patch[key])) {
           newMemberCopy[key] = { ...(newMemberCopy[key] || {}), ...patch[key] };
         } else {
           newMemberCopy[key] = patch[key];

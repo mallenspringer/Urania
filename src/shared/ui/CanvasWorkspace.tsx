@@ -30,6 +30,7 @@ import {
   Spline,
   Activity,
   Image as ImageIcon,
+  Bookmark,
 } from "lucide-react";
 
 export const CanvasWorkspace: React.FC = () => {
@@ -596,6 +597,9 @@ export const CanvasWorkspace: React.FC = () => {
           case "u":
             setActiveTool("create-arc");
             break;
+          case "d":
+            setActiveTool("create-discTab");
+            break;
         }
       }
     };
@@ -886,7 +890,13 @@ export const CanvasWorkspace: React.FC = () => {
   const section2Tools = [
     { id: "create-line", icon: <Minus className="h-5 w-5" />, label: creationMode === "cutout" ? "Line Cutout (L)" : "Line (L)" },
     { id: "create-curve", icon: <Spline className="h-5 w-5" />, label: creationMode === "cutout" ? "Curve Cutout (B)" : "Bézier Curve (B)" },
-    { id: "create-arc", icon: <Activity className="h-5 w-5" />, label: creationMode === "cutout" ? "Arc Cutout (U)" : "Circular Arc (U)" },
+    { id: "create-arc", icon: (
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+        <path d="M 4 19 A 14 14 0 0 1 19 4" />
+        <circle cx="4" cy="19" r="1.5" fill="currentColor" />
+        <circle cx="19" cy="4" r="1.5" fill="currentColor" />
+      </svg>
+    ), label: creationMode === "cutout" ? "Arc Cutout (U)" : "Circular Arc (U)" },
     { id: "create-rectangle", icon: <Square className="h-5 w-5" />, label: creationMode === "cutout" ? "Rectangle Cutout (R)" : "Rectangle (R)" },
     { id: "create-circle", icon: <CircleIcon className="h-5 w-5" />, label: creationMode === "cutout" ? "Circle Cutout (C)" : "Circle (C)" },
     { id: "create-polygon", icon: <Hexagon className="h-5 w-5" />, label: creationMode === "cutout" ? "Polygon Cutout (P)" : "Polygon (P)" },
@@ -899,6 +909,7 @@ export const CanvasWorkspace: React.FC = () => {
     { id: "create-star", icon: <Star className="h-5 w-5" />, label: creationMode === "cutout" ? "Star Cutout" : "Star" },
     { id: "create-text", icon: <Type className="h-5 w-5" />, label: creationMode === "cutout" ? "Text Cutout (T)" : "Text (T)" },
     { id: "create-arcText", icon: <Heading className="h-5 w-5" />, label: creationMode === "cutout" ? "Arc Text Cutout (A)" : "Arc Text (A)" },
+    { id: "create-discTab", icon: <Bookmark className="h-5 w-5" />, label: "Disc Tab (D)" },
     { id: "import-image", icon: <ImageIcon className="h-5 w-5" />, label: "Import Image (I)" },
   ];
 

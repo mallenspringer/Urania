@@ -298,7 +298,7 @@ export const selectTool: Tool = {
           }
         }
 
-        // If it's a tab, we initiate tab-specific drag-to-rotate interaction
+        // If it's a legacy auto-tab or track tab
         if (hit.type === "tab") {
           const nodeObj = findNodeInTree(context.project.mechanism, hit.id) as any;
           const targetRingId = nodeObj.targetRingId || findParentNode(context.project.mechanism, hit.id)?.id;
@@ -314,7 +314,23 @@ export const selectTool: Tool = {
             x1: pointer.x,
             y1: pointer.y,
           });
-        } else if (hit.type !== "ring" && hit.type !== "sector") {
+        } else if (hit.type === "ring" || hit.type === "discTab") {
+          // Grabbing either a ring disc or a disc-attached tab allows direct rotation of the ring
+          const targetRingId = hit.type === "ring" ? hit.id : findRingForNode(context.project, hit.id);
+          const targetRing = targetRingId ? findNodeInTree(context.project.mechanism, targetRingId) : null;
+          const startPointerAngle = (Math.atan2(pointer.y, pointer.x) * 180) / Math.PI;
+
+          context.updatePreview({
+            isDraggingRingDisc: true,
+            nodeId: hit.id,
+            nodeType: hit.type,
+            targetRingId: targetRingId,
+            startPointerAngle: startPointerAngle,
+            startRingRotation: targetRing?.rotation || 0,
+            x1: pointer.x,
+            y1: pointer.y,
+          });
+        } else if (hit.type !== "sector") {
           const nodeObj = findNodeInTree(context.project.mechanism, hit.id);
           context.updatePreview({
             isDraggingNode: true,
@@ -327,7 +343,6 @@ export const selectTool: Tool = {
             startNodeY: nodeObj.transform.y,
           });
         } else {
-          // If we clicked a ring or sector, just record click start for click selection toggle
           context.updatePreview({
             isClickOnly: true,
             nodeId: hit.id,
@@ -465,6 +480,24 @@ export const selectTool: Tool = {
         const updatedRing = findNodeInTree(updatedMechanism, targetRingId);
         if (updatedRing) {
           updatedRing.rotation = cwRotation;
+          useProjectStore.getState().setProject({
+            ...context.project,
+            mechanism: updatedMechanism,
+          });
+        }
+      }
+    } else if (preview.isDraggingRingDisc) {
+      const targetRingId = preview.targetRingId;
+      if (targetRingId) {
+        const currentPointerAngle = (Math.atan2(pointer.y, pointer.x) * 180) / Math.PI;
+        let deltaAngle = currentPointerAngle - preview.startPointerAngle;
+        let newRotation = (preview.startRingRotation + deltaAngle) % 360;
+        if (newRotation < 0) newRotation += 360;
+
+        const updatedMechanism = JSON.parse(JSON.stringify(context.project.mechanism));
+        const updatedRing = findNodeInTree(updatedMechanism, targetRingId);
+        if (updatedRing) {
+          updatedRing.rotation = Math.round(newRotation * 10) / 10;
           useProjectStore.getState().setProject({
             ...context.project,
             mechanism: updatedMechanism,
@@ -921,8 +954,8 @@ export const selectTool: Tool = {
         updatedNode.transform.y = finalNode.transform.y;
         context.executeCommand(new UpdateNodeCommand(preview.nodeId, preview.originalNode, updatedNode));
       }
-    } else if (preview.isDraggingTab) {
-      // Finished tab polar dragging (rotating target ring)
+    } else if (preview.isDraggingTab || preview.isDraggingRingDisc) {
+      // Finished tab or ring disc direct rotation drag
       const targetRingId = preview.targetRingId;
       if (targetRingId) {
         const currentProject = useProjectStore.getState().project;
@@ -939,12 +972,14 @@ export const selectTool: Tool = {
           });
         }
 
-        // Prepare snapshots for UpdateNodeCommand
-        const startRingNode = findNodeInTree(originalMechanism, targetRingId);
-        const finalRingNode = JSON.parse(JSON.stringify(startRingNode));
-        finalRingNode.rotation = finalRing.rotation;
+        // Prepare snapshots for UpdateNodeCommand if rotation actually changed
+        if (finalRing && Math.abs((finalRing.rotation || 0) - preview.startRingRotation) > 0.01) {
+          const startRingNode = findNodeInTree(originalMechanism, targetRingId);
+          const finalRingNode = JSON.parse(JSON.stringify(startRingNode));
+          finalRingNode.rotation = finalRing.rotation;
 
-        context.executeCommand(new UpdateNodeCommand(targetRingId, startRingNode, finalRingNode));
+          context.executeCommand(new UpdateNodeCommand(targetRingId, startRingNode, finalRingNode));
+        }
       }
     } else if (preview.isResizing) {
       // Finished resizing!

@@ -76,7 +76,7 @@ export interface RingNode extends BaseNode {
   tabWidth?: number;
   tabHeight?: number;
   tabLabel?: string;
-  children: Array<SectorNode | ElementNode>;
+  children: Array<SectorNode | ElementNode | DiscTabNode>;
 }
 
 export interface SectorNode extends BaseNode {
@@ -237,6 +237,17 @@ export interface TabNode extends ElementNode {
   gearRatio?: number;
   trackSweep?: number;
   label?: string;
+}
+
+export interface DiscTabNode extends ElementNode {
+  type: "discTab";
+  angle: number;          // Polar angle in degrees (CW from 0° / 3 o'clock), in the ring's local frame
+  edge: "outer";          // v1.0: outer-edge only; inner-edge is post-MVP
+  width: number;          // Arc-chord width at the ring edge (px)
+  height: number;         // Radial protrusion depth (px)
+  cornerRadius: number;   // Rounding on the tab's free edges
+  tabShape: "rectangular" | "semicircular" | "trapezoidal";
+  label?: string;         // Optional printed text on the tab face
 }
 
 // Window Masks

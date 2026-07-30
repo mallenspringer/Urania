@@ -64,3 +64,24 @@ The MVP Radial Warp feature deforms rectangles and trapezoids into arc-slice sha
 ### Radial Handle Coordinate Mode (Post-MVP UX Polish)
 * **Contextual Polar Handle Rendering**: When an object sits on a ring, optional handle affordances render in a second color showing arc-constrained drag directions (tangential arc vs. radial inward/outward) alongside the standard Cartesian bounding box handles. Toggled per-user as a preference rather than per-object.
 * **Snap-to-Arc Movement**: Objects with Radial Warp active snap their center position to the ring's arc geometry during drag, preventing accidental off-arc placement. Configurable snap threshold.
+
+---
+
+## 5. Disc-Attached Tabs — Deferred Features
+
+### Inner-Edge Tabs (Post-MVP)
+* **Inward-Protruding Tabs**: `DiscTabNode` currently only supports `edge: "outer"` (tabs that protrude outward from the disc's outer perimeter). A future extension will add `edge: "inner"`, allowing tabs that protrude *inward* from the disc's inner hole boundary. These are geometrically identical but point toward the brad hole center. The `DiscTabNode` type already includes the `edge` field to ensure forward compatibility. Inner-edge tab geometry is validated to prevent the tab from crossing the opposite ring boundary.
+
+---
+
+## 6. Post-MVP Mechanism Architecture
+
+### V1.0 Constraint — Central Brad Binding
+* All v1.0 rings are assumed to share a single central brad (axle pin) that physically binds the ring stack at the origin. This means all rings share the same rotation center and are coaxial.
+* Internal mechanical connections that would allow a ring to be driven by or linked to another ring *independently of the central brad* (e.g., gear-linked rotations, track-guided satellite rings, pivoting lever arms) are **post-MVP features**. These require a separate mechanism graph node model that is architecturally distinct from the current concentric volvelle model.
+
+### Post-MVP Independent Mechanism Connections
+* **Gear-Linked Rotations**: Linked angular motion where rotating one ring automatically spins connected rings by configurable gear ratios.
+* **Track Sweep Limits / Rotation Stops**: Mechanical stops limiting disc rotation to specific angular spans (e.g. 45° to 180°). Connection requires a mechanism that is independent of the brad.
+* **Satellite / Eccentric Ring Mounts**: Rings whose center of rotation is offset from the origin, mounted via a track or secondary brad. Requires a mechanism node model supporting multiple pivot points.
+

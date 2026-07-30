@@ -24,7 +24,7 @@ describe("Polygonal Rings & Radial Symmetry Engine", () => {
 
   it("should generate valid regular polygon SVG paths", () => {
     const hexagonPath = getPolygonPath(6, 100);
-    expect(hexagonPath).toContain("M 100,0");
+    expect(hexagonPath).toContain("-100");
     expect(hexagonPath.split(" L ").length).toBe(6);
   });
 

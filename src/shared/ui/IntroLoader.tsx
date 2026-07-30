@@ -10,7 +10,10 @@ interface Particle {
   vx: number;
   vy: number;
   size: number;
-  color: string;
+  color1: [number, number, number];
+  color2: [number, number, number];
+  colorPhase: number;
+  colorSpeed: number;
   alpha: number;
   flickerSpeed: number;
 }
@@ -19,6 +22,11 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [opacity, setOpacity] = useState(1);
+  const onCompleteRef = useRef(onComplete);
+
+  useEffect(() => {
+    onCompleteRef.current = onComplete;
+  });
 
   useEffect(() => {
     // 1. Start background fade-out shortly after mount to trigger CSS transition
@@ -26,10 +34,10 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
       setOpacity(0);
     }, 50);
 
-    // Call onComplete after 1.5 seconds (1500ms)
+    // Call onComplete after 6.0 seconds (6000ms - doubled from 3000ms)
     const completeTimer = setTimeout(() => {
-      onComplete();
-    }, 1500);
+      onCompleteRef.current();
+    }, 6000);
 
     // 2. Setup Particle Canvas Animation
     const canvas = canvasRef.current;
@@ -48,26 +56,31 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
     };
     window.addEventListener("resize", handleResize);
 
-    // Seed particles: highly dense at the top
+    // Seed arcade starfield particles with dual-color twinkle pairs
     const particles: Particle[] = [];
-    const particleCount = 200;
-    const colors = [
-      "rgb(239, 68, 68)",  // Bright Red
-      "rgb(34, 197, 94)",  // Bright Green
-      "rgb(59, 130, 246)", // Bright Blue
+    const particleCount = 220;
+    const colorPairs: Array<[[number, number, number], [number, number, number]]> = [
+      [[248, 250, 252], [148, 163, 184]], // Bright Silver White <-> Steel Gray
+      [[226, 232, 240], [99, 102, 241]],  // Pure Silver <-> Indigo Silver
+      [[203, 213, 225], [100, 116, 139]], // Light Slate <-> Dark Charcoal
+      [[255, 255, 255], [192, 132, 252]], // Crisp White <-> Violet Sparkle
+      [[241, 245, 249], [56, 189, 248]],  // Ice White <-> Cyan Silver
     ];
 
     for (let i = 0; i < particleCount; i++) {
+      const pair = colorPairs[Math.floor(Math.random() * colorPairs.length)];
       particles.push({
         x: Math.random() * width,
-        // Denser at the top: square the random to skew towards 0
         y: Math.pow(Math.random(), 2.5) * (height * 0.25),
-        vx: (Math.random() - 0.5) * 1.5,
-        vy: Math.random() * 2 + 0.5, // positive y velocity (drifting down)
-        size: Math.random() * 3 + 2, // 2px to 5px
-        color: colors[Math.floor(Math.random() * colors.length)],
+        vx: (Math.random() - 0.5) * 1.2,
+        vy: (Math.random() * 2 + 0.5) * 0.75, // 75% fall rate
+        size: Math.random() < 0.75 ? 1 : 2,
+        color1: pair[0],
+        color2: pair[1],
+        colorPhase: Math.random() * Math.PI * 2,
+        colorSpeed: Math.random() * 1.5 + 0.5,
         alpha: Math.random() * 0.7 + 0.3,
-        flickerSpeed: Math.random() * 0.1 + 0.05,
+        flickerSpeed: Math.random() * 0.08 + 0.04,
       });
     }
 
@@ -76,7 +89,7 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
 
     const animate = () => {
       const elapsed = Date.now() - startTime;
-      const progress = Math.min(1, elapsed / 1500); // 0 to 1
+      const progress = Math.min(1, elapsed / 6000); // 0 to 1 over 6.0s
 
       ctx.clearRect(0, 0, width, height);
 
@@ -86,25 +99,31 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
         p.alpha += (Math.random() - 0.5) * p.flickerSpeed * 2;
         p.alpha = Math.max(0.1, Math.min(1, p.alpha));
 
-        // Physics: drift and diffuse downwards
+        // Physics: drift and diffuse downwards at 75% speed
         p.y += p.vy;
         p.x += p.vx;
 
-        // Apply a small random walk to horizontal velocity for diffusion look
-        p.vx += (Math.random() - 0.5) * 0.2;
-        p.vx = Math.max(-2, Math.min(2, p.vx));
+        // Small horizontal drift diffusion
+        p.vx += (Math.random() - 0.5) * 0.15;
+        p.vx = Math.max(-1.5, Math.min(1.5, p.vx));
 
         // Gravity acceleration
-        p.vy += 0.04;
+        p.vy += 0.03;
 
-        // Fade out overall towards the end of the 1.5s lifecycle
+        // Fade out overall towards the end of the 6s lifecycle
         const fadeFactor = 1 - progress;
         const currentAlpha = p.alpha * fadeFactor;
 
-        // Render pixel
-        ctx.fillStyle = p.color;
+        // Asynchronous dual-color twinkle interpolation
+        const mix = (Math.sin(elapsed * 0.003 * p.colorSpeed + p.colorPhase) + 1) / 2;
+        const r = Math.round(p.color1[0] + (p.color2[0] - p.color1[0]) * mix);
+        const g = Math.round(p.color1[1] + (p.color2[1] - p.color1[1]) * mix);
+        const b = Math.round(p.color1[2] + (p.color2[2] - p.color1[2]) * mix);
+
+        // Render pixel-perfect square arcade particle
+        ctx.fillStyle = `rgb(${r}, ${g}, ${b})`;
         ctx.globalAlpha = currentAlpha;
-        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.fillRect(Math.floor(p.x), Math.floor(p.y), p.size, p.size);
       });
 
       if (progress < 1) {
@@ -120,7 +139,7 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
       clearTimeout(fadeTimer);
       clearTimeout(completeTimer);
     };
-  }, [onComplete]);
+  }, []);
 
   return (
     <div
@@ -133,7 +152,7 @@ export const IntroLoader: React.FC<IntroLoaderProps> = ({ onComplete }) => {
         height: "100vh",
         backgroundColor: "#000000",
         opacity: opacity,
-        transition: "opacity 1.45s cubic-bezier(0.25, 0.46, 0.45, 0.94)",
+        transition: "opacity 2.9s cubic-bezier(0.75, 0, 0.9, 0.15)",
         pointerEvents: "none",
         zIndex: 9999,
         overflow: "hidden",
