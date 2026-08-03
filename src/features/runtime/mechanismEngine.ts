@@ -75,6 +75,15 @@ function collectRingWindows(ring: RingNode): string[] {
   return collected;
 }
 
+export interface RingContext {
+  id: string;
+  innerRadius: number;
+  outerRadius: number;
+  ringShape?: "circle" | "polygon";
+  polygonSides?: number;
+  edgeCurvature?: number;
+}
+
 /**
  * Recursively resolves a scene graph node into world coordinates, bounds, patterns, and mask states.
  */
@@ -84,7 +93,7 @@ function resolveNode(
   parentVisible: boolean,
   currentMaskIds: string[],
   resolved: ResolvedNode[],
-  ringContext: { id: string; innerRadius: number; outerRadius: number } | null
+  ringContext: RingContext | null
 ): void {
   let localMatrix = Matrix2D.identity();
   let radialRadius = 0;
