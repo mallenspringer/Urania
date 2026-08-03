@@ -26,6 +26,8 @@ import {
   Square,
   Trash2,
   Bookmark,
+  Layers,
+  Grid,
 } from "lucide-react";
 
 // Deep merge helper to apply nested object patches safely
@@ -296,6 +298,21 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
   const { activeItem, selectedItems } = useSelectionStore();
   const isRightSidebarOpen = useViewStore((state) => state.isRightSidebarOpen);
 
+  const gridLayer = useViewStore((s) => s.gridLayer);
+  const gridMode = useViewStore((s) => s.gridMode);
+  const manualSliceCount = useViewStore((s) => s.manualSliceCount);
+  const gridLineColorMode = useViewStore((s) => s.gridLineColorMode);
+  const gridOpacity = useViewStore((s) => s.gridOpacity);
+  const showSliceGuides = useViewStore((s) => s.showSliceGuides);
+  const showCircularGuides = useViewStore((s) => s.showCircularGuides);
+  const setGridLayer = useViewStore((s) => s.setGridLayer);
+  const setGridMode = useViewStore((s) => s.setGridMode);
+  const setManualSliceCount = useViewStore((s) => s.setManualSliceCount);
+  const setGridLineColorMode = useViewStore((s) => s.setGridLineColorMode);
+  const setGridOpacity = useViewStore((s) => s.setGridOpacity);
+  const toggleSliceGuides = useViewStore((s) => s.toggleSliceGuides);
+  const toggleCircularGuides = useViewStore((s) => s.toggleCircularGuides);
+
   const activeNode = activeItem ? findNodeInTree(project.mechanism, activeItem.id) : null;
   const activeUnit: Unit = project.settings.units || "pixels";
   const unitSymbol = getUnitSymbol(activeUnit);
@@ -334,14 +351,15 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
     }
   }, [activeNode?.id, activeNode?.content, activeNode?.name, activeNode?.style?.fill, activeNode?.style?.stroke, activeNode?.shape?.style?.fill, activeNode?.shape?.style?.stroke, activeNode?.label, activeNode?.tabLabel]);
 
-  if (!activeNode) {
-    // Render Project / Mechanism settings when nothing is selected
+  // 1. NO SELECTION: Render complete Project & Canvas Settings Dashboard
+  if (selectedItems.length === 0) {
+    const viewStore = useViewStore.getState();
     return (
       <aside className={`inspector-panel ${isRightSidebarOpen ? "" : "collapsed"}`} id="inspector-project-settings">
         <div className="sidebar-section">
           <h3 className="section-title">
             <Settings size={14} />
-            Project Settings
+            Project Metadata
           </h3>
           <div className="info-card">
             <label>Project Name</label>
@@ -351,18 +369,18 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
               value={project.metadata.name || ""}
               onChange={(e) => updateMetadata({ name: e.target.value })}
             />
-            <label>Author</label>
+            <label style={{ marginTop: "8px" }}>Author</label>
             <input
               type="text"
               id="project-author-input"
               value={project.metadata.author || ""}
               onChange={(e) => updateMetadata({ author: e.target.value })}
             />
-            <label>Description</label>
+            <label style={{ marginTop: "8px" }}>Description</label>
             <textarea
               id="project-description-textarea"
               value={project.metadata.description || ""}
-              rows={3}
+              rows={2}
               onChange={(e) => updateMetadata({ description: e.target.value })}
             />
           </div>
@@ -371,48 +389,10 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
         <div className="sidebar-section">
           <h3 className="section-title">
             <Maximize size={14} />
-            Canvas Dimensions ({getUnitSymbol(project.settings.units)})
+            Canvas Dimensions & Units
           </h3>
-          <div className="info-card control-double-row">
-            <div>
-              <label>Width ({getUnitSymbol(project.settings.units)})</label>
-              <input
-                type="number"
-                id="canvas-width-input"
-                min={project.settings.units === "pixels" ? 100 : project.settings.units === "inches" ? 1 : 10}
-                step={project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 0.01 : 0.1}
-                value={Number(project.settings.canvasSize.width.toFixed(project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 3 : 2))}
-                onChange={(e) =>
-                  updateSettings({
-                    canvasSize: {
-                      ...project.settings.canvasSize,
-                      width: Math.max(0.1, parseFloat(e.target.value) || 0),
-                    },
-                  })
-                }
-              />
-            </div>
-            <div>
-              <label>Height ({getUnitSymbol(project.settings.units)})</label>
-              <input
-                type="number"
-                id="canvas-height-input"
-                min={project.settings.units === "pixels" ? 100 : project.settings.units === "inches" ? 1 : 10}
-                step={project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 0.01 : 0.1}
-                value={Number(project.settings.canvasSize.height.toFixed(project.settings.units === "pixels" ? 1 : project.settings.units === "inches" ? 3 : 2))}
-                onChange={(e) =>
-                  updateSettings({
-                    canvasSize: {
-                      ...project.settings.canvasSize,
-                      height: Math.max(0.1, parseFloat(e.target.value) || 0),
-                    },
-                  })
-                }
-              />
-            </div>
-          </div>
-          <div className="info-card" style={{ marginTop: "10px" }}>
-            <label>Units</label>
+          <div className="info-card">
+            <label>Unit System</label>
             <select
               id="canvas-units-select"
               value={project.settings.units}
@@ -424,23 +404,426 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
                 color: "#f8fafc",
                 padding: "6px",
                 fontSize: "13px",
+                marginBottom: "10px",
+                width: "100%",
               }}
             >
               <option value="pixels">Pixels (px)</option>
               <option value="inches">Inches (in)</option>
               <option value="millimeters">Millimeters (mm)</option>
             </select>
+
+            <div className="control-double-row">
+              <ScrubbableNumberField
+                id="canvas-width-input"
+                label="Width"
+                unitSymbol={unitSymbol}
+                pixelValue={project.settings.canvasSize.width}
+                activeUnit={activeUnit}
+                minPx={10}
+                onChange={(px) =>
+                  updateSettings({
+                    canvasSize: { ...project.settings.canvasSize, width: px },
+                  })
+                }
+                onCommit={(px) =>
+                  updateSettings({
+                    canvasSize: { ...project.settings.canvasSize, width: px },
+                  })
+                }
+              />
+              <ScrubbableNumberField
+                id="canvas-height-input"
+                label="Height"
+                unitSymbol={unitSymbol}
+                pixelValue={project.settings.canvasSize.height}
+                activeUnit={activeUnit}
+                minPx={10}
+                onChange={(px) =>
+                  updateSettings({
+                    canvasSize: { ...project.settings.canvasSize, height: px },
+                  })
+                }
+                onCommit={(px) =>
+                  updateSettings({
+                    canvasSize: { ...project.settings.canvasSize, height: px },
+                  })
+                }
+              />
+            </div>
           </div>
-          <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "12px", cursor: "pointer" }}>
-            <input
-              type="checkbox"
-              id="settings-show-grab-tabs-checkbox"
-              checked={project.settings.showGrabTabs !== false}
-              onChange={(e) => updateSettings({ showGrabTabs: e.target.checked })}
-              style={{ accentColor: "#6366f1", cursor: "pointer" }}
+        </div>
+
+        {/* Drafting Grid & Guide Overlay Preferences */}
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Grid size={14} />
+            Drafting Grid & Guides
+          </h3>
+          <div className="info-card" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+            <div>
+              <label>Grid Layer Visibility</label>
+              <select
+                value={gridLayer}
+                onChange={(e) => setGridLayer(e.target.value as any)}
+                style={{
+                  backgroundColor: "#0b0c0f",
+                  border: "1px solid #232530",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  padding: "5px 8px",
+                  fontSize: "12px",
+                  width: "100%",
+                }}
+              >
+                <option value="foreground">Foreground (Over Artwork)</option>
+                <option value="background">Background (Under Artwork)</option>
+                <option value="off">Off (Hidden)</option>
+              </select>
+            </div>
+
+            <div>
+              <label>Grid Mode</label>
+              <select
+                value={gridMode}
+                onChange={(e) => setGridMode(e.target.value as any)}
+                style={{
+                  backgroundColor: "#0b0c0f",
+                  border: "1px solid #232530",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  padding: "5px 8px",
+                  fontSize: "12px",
+                  width: "100%",
+                }}
+              >
+                <option value="auto-symmetry">Auto-Symmetry (Tracks Active Ring)</option>
+                <option value="manual">Manual Slice Count</option>
+              </select>
+            </div>
+
+            {gridMode === "manual" && (
+              <ScrubbableRawField
+                label="Manual Slice Count"
+                value={manualSliceCount}
+                min={1}
+                max={360}
+                step={1}
+                onChange={(val) => setManualSliceCount(Math.max(1, Math.round(val)))}
+                onCommit={(val) => setManualSliceCount(Math.max(1, Math.round(val)))}
+              />
+            )}
+
+            <div>
+              <label>Line Color Theme</label>
+              <select
+                value={gridLineColorMode}
+                onChange={(e) => setGridLineColorMode(e.target.value as any)}
+                style={{
+                  backgroundColor: "#0b0c0f",
+                  border: "1px solid #232530",
+                  borderRadius: "6px",
+                  color: "#f8fafc",
+                  padding: "5px 8px",
+                  fontSize: "12px",
+                  width: "100%",
+                }}
+              >
+                <option value="auto">Auto Contrast</option>
+                <option value="indigo">Indigo Glow</option>
+                <option value="dark">Dark Charcoal</option>
+                <option value="light">Light Crisp</option>
+              </select>
+            </div>
+
+            <ScrubbableRawField
+              label="Grid Line Opacity"
+              value={gridOpacity}
+              min={0.05}
+              max={1}
+              step={0.05}
+              onChange={(val) => setGridOpacity(val)}
+              onCommit={(val) => setGridOpacity(val)}
             />
-            <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Include Grab Tabs in Export</span>
-          </label>
+
+            <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={showSliceGuides}
+                onChange={() => toggleSliceGuides()}
+                style={{ accentColor: "#6366f1" }}
+              />
+              <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Show Radial Slice Lines</span>
+            </label>
+
+            <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={showCircularGuides}
+                onChange={() => toggleCircularGuides()}
+                style={{ accentColor: "#6366f1" }}
+              />
+              <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Show Concentric Circular Guides</span>
+            </label>
+          </div>
+        </div>
+
+        {/* Global Export Defaults */}
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Settings size={14} />
+            Export Defaults
+          </h3>
+          <div className="info-card">
+            <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                id="settings-show-grab-tabs-checkbox"
+                checked={project.settings.showGrabTabs !== false}
+                onChange={(e) => updateSettings({ showGrabTabs: e.target.checked })}
+                style={{ accentColor: "#6366f1", cursor: "pointer" }}
+              />
+              <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Include Grab Tabs in Export</span>
+            </label>
+          </div>
+        </div>
+      </aside>
+    );
+  }
+
+  // 2. MULTI-SELECTION: Render Aggregate Multi-Select Inspector
+  if (selectedItems.length > 1) {
+    const selectedNodes = selectedItems
+      .map((item) => findNodeInTree(project.mechanism, item.id))
+      .filter(Boolean) as any[];
+
+    const types = new Set(selectedNodes.map((n) => n.type));
+    const allSameType = types.size === 1;
+    const commonType = allSameType ? Array.from(types)[0] : "Mixed Types";
+
+    const fills = selectedNodes.map((n) => n.style?.fill).filter((f) => f !== undefined);
+    const commonFill = fills.length === selectedNodes.length && new Set(fills).size === 1 ? fills[0] : "";
+
+    const strokes = selectedNodes.map((n) => n.style?.stroke).filter((s) => s !== undefined);
+    const commonStroke = strokes.length === selectedNodes.length && new Set(strokes).size === 1 ? strokes[0] : "";
+
+    const strokeWidths = selectedNodes.map((n) => n.style?.strokeWidth).filter((w) => w !== undefined);
+    const commonStrokeWidth = strokeWidths.length === selectedNodes.length && new Set(strokeWidths).size === 1 ? strokeWidths[0] : null;
+
+    const opacities = selectedNodes.map((n) => n.style?.opacity).filter((o) => o !== undefined);
+    const commonOpacity = opacities.length === selectedNodes.length && new Set(opacities).size === 1 ? opacities[0] : null;
+
+    const textNodes = selectedNodes.filter((n) => n.type === "text" || n.type === "arcText");
+    const fontSizes = textNodes.map((n) => n.fontSize).filter((s) => s !== undefined);
+    const commonFontSize = fontSizes.length === textNodes.length && fontSizes.length > 0 && new Set(fontSizes).size === 1 ? fontSizes[0] : null;
+
+    const artworkFlags = selectedNodes.map((n) => n.export?.artwork);
+    const commonArtwork = artworkFlags.length === selectedNodes.length && new Set(artworkFlags).size === 1 ? artworkFlags[0] : null;
+
+    const cutFlags = selectedNodes.map((n) => n.export?.cut);
+    const commonCut = cutFlags.length === selectedNodes.length && new Set(cutFlags).size === 1 ? cutFlags[0] : null;
+
+    const foldFlags = selectedNodes.map((n) => n.export?.fold);
+    const commonFold = foldFlags.length === selectedNodes.length && new Set(foldFlags).size === 1 ? foldFlags[0] : null;
+
+    const handleBatchUpdate = (patchBuilder: (node: any) => any) => {
+      const updates = selectedNodes.map((node) => {
+        const oldNode = JSON.parse(JSON.stringify(node));
+        const patch = patchBuilder(node);
+        const newNode = JSON.parse(JSON.stringify(node));
+        deepMerge(newNode, patch);
+        return { nodeId: node.id, oldNode, newNode };
+      });
+      executeCommand(new UpdateMultipleNodesCommand(updates));
+    };
+
+    return (
+      <aside className={`inspector-panel ${isRightSidebarOpen ? "" : "collapsed"}`} id="inspector-multi-select">
+        <div className="inspector-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <Layers size={16} className="accent-icon" />
+            <div>
+              <h2 className="panel-title" style={{ margin: 0, fontSize: "14px", fontWeight: 700 }}>Multi-Selection</h2>
+              <span className="node-type-badge" style={{ fontSize: "11px", color: "#94a3b8" }}>{selectedNodes.length} Elements Selected ({commonType})</span>
+            </div>
+          </div>
+          <button
+            onClick={handleDeleteSelected}
+            className="action-icon-btn delete-btn"
+            title="Delete Selected Elements"
+            style={{ padding: "6px", color: "#f87171", backgroundColor: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: "6px", cursor: "pointer" }}
+          >
+            <Trash2 size={16} />
+          </button>
+        </div>
+
+        <div className="sidebar-section">
+          <div className="selected-tags" style={{ display: "flex", flexWrap: "wrap", gap: "4px", padding: "8px", backgroundColor: "rgba(0, 0, 0, 0.2)", borderRadius: "6px" }}>
+            {selectedNodes.map((node) => (
+              <span
+                key={node.id}
+                className="selection-tag"
+                onClick={() => useSelectionStore.getState().selectItem(node.id, node.type, false)}
+                title="Click to isolate selection"
+                style={{ cursor: "pointer", fontSize: "11px", backgroundColor: "rgba(99, 102, 241, 0.2)", padding: "2px 6px", borderRadius: "4px", border: "1px solid rgba(99, 102, 241, 0.4)", color: "#c084fc" }}
+              >
+                {node.name || node.type}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Aggregate Appearance Section */}
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Palette size={14} />
+            Shared Appearance
+          </h3>
+          <div className="info-card control-double-row">
+            <div>
+              <label>Fill {commonFill === "" ? "(Mixed)" : ""}</label>
+              <input
+                type="color"
+                value={commonFill || "#3b82f6"}
+                onChange={(e) =>
+                  handleBatchUpdate((node) => ({
+                    style: { ...(node.style || {}), fill: e.target.value },
+                  }))
+                }
+              />
+            </div>
+            <div>
+              <label>Stroke {commonStroke === "" ? "(Mixed)" : ""}</label>
+              <input
+                type="color"
+                value={commonStroke || "#1e3a8a"}
+                onChange={(e) =>
+                  handleBatchUpdate((node) => ({
+                    style: { ...(node.style || {}), stroke: e.target.value },
+                  }))
+                }
+              />
+            </div>
+          </div>
+
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <ScrubbableRawField
+              label={`Stroke Width ${commonStrokeWidth === null ? "(Mixed)" : ""}`}
+              value={commonStrokeWidth !== null ? commonStrokeWidth : 1}
+              min={0}
+              step={0.5}
+              onChange={() => {}}
+              onCommit={(val) =>
+                handleBatchUpdate((node) => ({
+                  style: { ...(node.style || {}), strokeWidth: val },
+                }))
+              }
+            />
+          </div>
+
+          <div className="info-card" style={{ marginTop: "10px" }}>
+            <ScrubbableRawField
+              label={`Opacity ${commonOpacity === null ? "(Mixed)" : ""}`}
+              value={commonOpacity !== null ? commonOpacity : 1}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={() => {}}
+              onCommit={(val) =>
+                handleBatchUpdate((node) => ({
+                  style: { ...(node.style || {}), opacity: val },
+                }))
+              }
+            />
+          </div>
+        </div>
+
+        {/* Text Properties if text nodes selected */}
+        {textNodes.length > 0 && (
+          <div className="sidebar-section">
+            <h3 className="section-title">
+              <Type size={14} />
+              Shared Text Formatting ({textNodes.length} Text Elements)
+            </h3>
+            <div className="info-card">
+              <ScrubbableRawField
+                label={`Font Size ${commonFontSize === null ? "(Mixed)" : ""}`}
+                value={commonFontSize !== null ? commonFontSize : 14}
+                min={6}
+                max={200}
+                step={1}
+                onChange={() => {}}
+                onCommit={(val) =>
+                  handleBatchUpdate((node) => {
+                    if (node.type === "text" || node.type === "arcText") {
+                      return { fontSize: val };
+                    }
+                    return {};
+                  })
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Shared Export Flags */}
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Maximize size={14} />
+            Shared Export Intent
+          </h3>
+          <div className="info-card" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={commonArtwork === true}
+                ref={(el) => {
+                  if (el) el.indeterminate = commonArtwork === null;
+                }}
+                onChange={(e) =>
+                  handleBatchUpdate((node) => ({
+                    export: { ...(node.export || { artwork: true, cut: false, fold: false }), artwork: e.target.checked },
+                  }))
+                }
+                style={{ accentColor: "#6366f1" }}
+              />
+              <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Include in Artwork Layer</span>
+            </label>
+
+            <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={commonCut === true}
+                ref={(el) => {
+                  if (el) el.indeterminate = commonCut === null;
+                }}
+                onChange={(e) =>
+                  handleBatchUpdate((node) => ({
+                    export: { ...(node.export || { artwork: true, cut: false, fold: false }), cut: e.target.checked },
+                  }))
+                }
+                style={{ accentColor: "#ef4444" }}
+              />
+              <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Include in Cut Paths Layer</span>
+            </label>
+
+            <label className="checkbox-row" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={commonFold === true}
+                ref={(el) => {
+                  if (el) el.indeterminate = commonFold === null;
+                }}
+                onChange={(e) =>
+                  handleBatchUpdate((node) => ({
+                    export: { ...(node.export || { artwork: true, cut: false, fold: false }), fold: e.target.checked },
+                  }))
+                }
+                style={{ accentColor: "#f59e0b" }}
+              />
+              <span style={{ fontSize: "12px", color: "#cbd5e1" }}>Include in Score / Fold Lines Layer</span>
+            </label>
+          </div>
         </div>
       </aside>
     );

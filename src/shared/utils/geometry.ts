@@ -196,6 +196,16 @@ export function isDescendantOf(parentNode: BaseNode, childId: string): boolean {
   return false;
 }
 
+export function findParentRing(mechanism: BaseNode, nodeId: string): BaseNode | null {
+  const rings = mechanism.children || [];
+  for (const ring of rings) {
+    if (ring.id === nodeId || isDescendantOf(ring, nodeId)) {
+      return ring;
+    }
+  }
+  return null;
+}
+
 export function isAngleBetween(target: number, start: number, sweep: number): boolean {
   const normTarget = normalizeAngle(target - start);
   return normTarget <= sweep;

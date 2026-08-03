@@ -4,6 +4,7 @@ import {
   findRingForNode,
   findNodeInTree,
   findParentNode,
+  findParentRing,
   isDescendantOf,
   isPointInsideNode,
   isPointInsideWindow,
@@ -891,13 +892,52 @@ export const selectTool: Tool = {
       const minY = Math.min(y1, y2);
       const maxX = Math.max(x1, x2);
       const maxY = Math.max(y1, y2);
-      const matches: { id: string; type: string }[] = [];
 
+      const activeItem = selectStore.activeItem;
+      const activeRing = activeItem ? findParentRing(context.project.mechanism, activeItem.id) : null;
+
+      if (!activeRing) {
+        // NO RING IS SELECTED: Drag-select picks the topmost visible ring!
+        const rings = context.project.mechanism.children || [];
+        const visibleRings = rings.filter((r) => r.visible !== false && !r.locked);
+
+        // Find ring nodes touched by marquee
+        const touchedRingNodes = resolvedNodes.filter((node) => {
+          if (node.type !== "ring" || !node.visible) return false;
+          return isNodeTouchedByMarquee(node, minX, minY, maxX, maxY, resolvedNodes, context.project);
+        });
+
+        if (touchedRingNodes.length > 0) {
+          const topmostTouched = visibleRings.slice().reverse().find((vr) => touchedRingNodes.some((tr) => tr.id === vr.id));
+          if (topmostTouched) {
+            selectStore.setSelection([{ id: topmostTouched.id, type: "ring" }]);
+            return;
+          }
+        }
+
+        // Fallback: Pick top-most visible ring in project
+        if (visibleRings.length > 0) {
+          const topmost = visibleRings[visibleRings.length - 1];
+          selectStore.setSelection([{ id: topmost.id, type: "ring" }]);
+        } else {
+          selectStore.clearSelection();
+        }
+        return;
+      }
+
+      // RING IS SELECTED: Marquee selection is ring-level-only!
+      const matches: { id: string; type: string }[] = [];
       resolvedNodes.forEach((node) => {
         if (node.visible && isNodeTouchedByMarquee(node, minX, minY, maxX, maxY, resolvedNodes, context.project)) {
           const nodeObj = findNodeInTree(context.project.mechanism, node.id);
           const isLocked = nodeObj ? nodeObj.locked : false;
-          if (node.type !== "volvelle" && node.type !== "ring" && node.type !== "sector" && !isLocked) {
+          if (
+            node.type !== "volvelle" &&
+            node.type !== "ring" &&
+            node.type !== "sector" &&
+            !isLocked &&
+            isDescendantOf(activeRing, node.id)
+          ) {
             matches.push({ id: node.id, type: node.type });
           }
         }
