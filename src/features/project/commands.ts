@@ -251,7 +251,7 @@ function removeNodeFromTree(tree: BaseNode, nodeId: string): { parentId: string;
 }
 
 /**
- * Command to create a generic node (shape, window, text, guide) under a parent.
+ * Command to create a generic node (shape, window, text, image, tab) under a parent.
  */
 export class CreateNodeCommand implements Command {
   private parentId: string;

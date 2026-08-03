@@ -23,6 +23,13 @@ This document tracks planned features, enhancements, and mechanism expansions be
 
 ## 2. v1.1 Priority Features
 
+### Pattern Generators & Advanced Group Selection
+* **Alternating Pattern Engine**: Advanced procedural repetition generator supporting alternating offsets, staggered angular steps, and multi-element rotational patterns across sectors.
+* **Grouping & Selection Tools**: Multi-object grouping abstraction allowing complex multi-element compositions to be grouped, saved as pattern blocks, and copied/pasted in a controlled manner for pattern building.
+
+### Automated Grid & Snap System
+* **Generated Snap Grids**: Fully automated Cartesian ($X/Y$) and Radial ($r/\theta$) grid generation with real-time snap targets. Replaces manual markers with dynamic generated snap points across ring boundaries, centerlines, and sector divisions.
+
 ### Enhanced Mechanism Dynamics & Controls
 * **Gear-Linked Rotations**: Linked angular motion where rotating one disc automatically spins connected discs by configurable gear ratios.
 * **Track Sweep Limits**: Mechanical rotation stops limiting disc rotation to specific angular spans (e.g. 45° to 180°).
@@ -34,16 +41,15 @@ This document tracks planned features, enhancements, and mechanism expansions be
 
 ---
 
-## 3. Product Architecture Decisions & Roadmap Sequence
+## 3. Product Architecture Decisions & Scope Adjustments
 
 ### Advisory Validation Philosophy
 * Validation checks (cutout paper bridge thickness, radius bounds, missing assets) remain strictly **advisory**.
 * Validation must never block exports or force geometry changes; artists retain absolute control over design choices and physical experimentation.
 
-### Refinement Sequence Leading to MVP Completion
-1. **Core Canvas & Design Tools**: Shapes, color pickers, typography, canvas interactions, inspector polish.
-2. **Slice Mode & Radial/Cartesian Grid System**: Sector-aware editing, smooth toggling between radial and cartesian coordinate spaces, concentric & radial guide snapping.
-3. **Export Pipeline Polish**: Generic SVG cut/fold/artwork package perfection and standalone interactive web object generation.
+### Scope Adjustments for MVP (v1.0)
+1. **Slice Mode Deferred**: Dedicated "Slice Mode" editing has been removed from MVP in favor of the integrated radial slice line grid overlay and rotational symmetry controls.
+2. **Manually-Placed Guides Removed**: Individual draggable guide markers were removed. Drafting assistance is provided via automated concentric ring and radial slice grid overlays, while permanent line/curve objects serve geometric path needs.
 
 ---
 
@@ -84,4 +90,3 @@ The MVP Radial Warp feature deforms rectangles and trapezoids into arc-slice sha
 * **Gear-Linked Rotations**: Linked angular motion where rotating one ring automatically spins connected rings by configurable gear ratios.
 * **Track Sweep Limits / Rotation Stops**: Mechanical stops limiting disc rotation to specific angular spans (e.g. 45° to 180°). Connection requires a mechanism that is independent of the brad.
 * **Satellite / Eccentric Ring Mounts**: Rings whose center of rotation is offset from the origin, mounted via a track or secondary brad. Requires a mechanism node model supporting multiple pivot points.
-

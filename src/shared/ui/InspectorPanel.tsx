@@ -577,7 +577,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
         </div>
 
         {/* Object Function Indicator & Solid / Cutout Conversion Card */}
-        {activeNode.type !== "ring" && activeNode.type !== "sector" && activeNode.type !== "tab" && activeNode.type !== "guide" && (
+        {activeNode.type !== "ring" && activeNode.type !== "sector" && activeNode.type !== "tab" && (
           <div className="info-card" style={{ marginTop: "10px", padding: "10px", backgroundColor: "rgba(255, 255, 255, 0.03)", borderRadius: "8px", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
               <span style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.5px", color: "#94a3b8", fontWeight: "600" }}>

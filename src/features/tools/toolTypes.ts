@@ -23,7 +23,7 @@ export interface Tool {
   label: string;
   icon: string; // Lucide icon name
   cursor: string;
-  category: "selection" | "shapes" | "windows" | "text" | "guides";
+  category: "selection" | "shapes" | "windows" | "text";
   onActivate?(context: ToolContext): void;
   onDeactivate?(context: ToolContext): void;
   onMouseDown?(e: KonvaEventObject<MouseEvent>, context: ToolContext): void;
