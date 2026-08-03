@@ -218,6 +218,76 @@ export class ReorderRingsCommand implements Command {
   }
 }
 
+/**
+ * Command to reorder child nodes within a parent node (sectors, elements).
+ */
+export class ReorderChildNodesCommand implements Command {
+  private parentId: string;
+  private fromIndex: number;
+  private toIndex: number;
+
+  constructor(parentId: string, fromIndex: number, toIndex: number) {
+    this.parentId = parentId;
+    this.fromIndex = fromIndex;
+    this.toIndex = toIndex;
+  }
+
+  execute(): void {
+    const store = useProjectStore.getState();
+    const mechanism = JSON.parse(JSON.stringify(store.project.mechanism)) as BaseNode;
+    const parent = findNodeInTree(mechanism, this.parentId);
+    if (!parent || !parent.children) return;
+
+    if (
+      this.fromIndex < 0 ||
+      this.fromIndex >= parent.children.length ||
+      this.toIndex < 0 ||
+      this.toIndex >= parent.children.length ||
+      this.fromIndex === this.toIndex
+    ) {
+      return;
+    }
+
+    const [moved] = parent.children.splice(this.fromIndex, 1);
+    parent.children.splice(this.toIndex, 0, moved);
+
+    store.setProject({
+      ...store.project,
+      mechanism: mechanism as any,
+    });
+  }
+
+  undo(): void {
+    const store = useProjectStore.getState();
+    const mechanism = JSON.parse(JSON.stringify(store.project.mechanism)) as BaseNode;
+    const parent = findNodeInTree(mechanism, this.parentId);
+    if (!parent || !parent.children) return;
+
+    if (
+      this.toIndex < 0 ||
+      this.toIndex >= parent.children.length ||
+      this.fromIndex < 0 ||
+      this.fromIndex >= parent.children.length ||
+      this.fromIndex === this.toIndex
+    ) {
+      return;
+    }
+
+    const [moved] = parent.children.splice(this.toIndex, 1);
+    parent.children.splice(this.fromIndex, 0, moved);
+
+    store.setProject({
+      ...store.project,
+      mechanism: mechanism as any,
+    });
+  }
+
+  getLabel(): string {
+    return "Reorder Elements";
+  }
+}
+
+
 
 // Helper to insert a node under a specific parent in the mechanism tree
 function addNodeToTree(tree: BaseNode, parentId: string, nodeToAdd: BaseNode): boolean {

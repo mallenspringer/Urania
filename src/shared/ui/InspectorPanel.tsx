@@ -40,6 +40,251 @@ function deepMerge(target: any, source: any) {
   }
 }
 
+interface ScrubbableNumberFieldProps {
+  id?: string;
+  label: string;
+  unitSymbol?: string;
+  pixelValue: number;
+  activeUnit: Unit;
+  minPx?: number;
+  maxPx?: number;
+  onChange: (pixelVal: number) => void;
+  onCommit: (pixelVal: number) => void;
+  onStartEdit?: () => void;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function ScrubbableNumberField({
+  id,
+  label,
+  unitSymbol,
+  pixelValue,
+  activeUnit,
+  minPx = 0,
+  maxPx,
+  onChange,
+  onCommit,
+  onStartEdit,
+  className,
+  style,
+}: ScrubbableNumberFieldProps) {
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const startXRef = useRef(0);
+  const startDisplayValRef = useRef(0);
+  const currentPixelValRef = useRef(pixelValue);
+  currentPixelValRef.current = pixelValue;
+  const isDraggingRef = useRef(false);
+
+  const displayVal = formatUnitValue(pixelValue, activeUnit);
+  const step = activeUnit === "pixels" ? 1 : activeUnit === "inches" ? 0.01 : 0.1;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    startXRef.current = e.clientX;
+    startDisplayValRef.current = displayVal;
+    isDraggingRef.current = false;
+
+    const handleMouseMove = (me: MouseEvent) => {
+      const deltaX = me.clientX - startXRef.current;
+      if (Math.abs(deltaX) > 2) {
+        if (!isDraggingRef.current) {
+          isDraggingRef.current = true;
+          setIsScrubbing(true);
+          if (onStartEdit) onStartEdit();
+        }
+        let newDisplayVal = startDisplayValRef.current + deltaX * step;
+        let newPx = toPixels(newDisplayVal, activeUnit);
+
+        if (minPx !== undefined) newPx = Math.max(minPx, newPx);
+        if (maxPx !== undefined) newPx = Math.min(maxPx, newPx);
+
+        currentPixelValRef.current = newPx;
+        onChange(newPx);
+      }
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      if (isDraggingRef.current) {
+        setIsScrubbing(false);
+        onCommit(currentPixelValRef.current);
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  return (
+    <div className={className} style={style}>
+      <label
+        className={`scrubbable-label ${isScrubbing ? "scrubbing" : ""}`}
+        onMouseDown={handleMouseDown}
+        title="Click and drag left/right to adjust value"
+      >
+        {label} {unitSymbol ? `(${unitSymbol})` : ""}
+      </label>
+      <input
+        type="number"
+        id={id}
+        step={step}
+        min={minPx !== undefined ? formatUnitValue(minPx, activeUnit) : undefined}
+        value={isNaN(displayVal) ? "" : displayVal}
+        onMouseDown={handleMouseDown}
+        onFocus={() => {
+          if (onStartEdit) onStartEdit();
+        }}
+        onChange={(e) => {
+          if (isDraggingRef.current) return;
+          const rawInput = parseFloat(e.target.value);
+          if (!isNaN(rawInput)) {
+            const px = Math.max(minPx, toPixels(rawInput, activeUnit));
+            currentPixelValRef.current = px;
+            onChange(px);
+          }
+        }}
+        onBlur={(e) => {
+          if (isDraggingRef.current) return;
+          const rawInput = parseFloat(e.target.value);
+          if (!isNaN(rawInput)) {
+            const px = Math.max(minPx, toPixels(rawInput, activeUnit));
+            onCommit(px);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+interface ScrubbableRawFieldProps {
+  id?: string;
+  label: string;
+  value: number;
+  unitSymbol?: string;
+  step?: number;
+  min?: number;
+  max?: number;
+  onChange: (val: number) => void;
+  onCommit: (val: number) => void;
+  onStartEdit?: () => void;
+  className?: string;
+  style?: React.CSSProperties;
+}
+
+export function ScrubbableRawField({
+  id,
+  label,
+  value,
+  unitSymbol,
+  step = 1,
+  min,
+  max,
+  onChange,
+  onCommit,
+  onStartEdit,
+  className,
+  style,
+}: ScrubbableRawFieldProps) {
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const startXRef = useRef(0);
+  const startValRef = useRef(value);
+  const currentValRef = useRef(value);
+  currentValRef.current = value;
+  const isDraggingRef = useRef(false);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    startXRef.current = e.clientX;
+    startValRef.current = value;
+    isDraggingRef.current = false;
+
+    const handleMouseMove = (me: MouseEvent) => {
+      const deltaX = me.clientX - startXRef.current;
+      if (Math.abs(deltaX) > 2) {
+        if (!isDraggingRef.current) {
+          isDraggingRef.current = true;
+          setIsScrubbing(true);
+          if (onStartEdit) onStartEdit();
+        }
+        let newVal = startValRef.current + deltaX * step;
+        if (min !== undefined) newVal = Math.max(min, newVal);
+        if (max !== undefined) newVal = Math.min(max, newVal);
+        newVal = Number(newVal.toFixed(step < 0.1 ? 2 : 1));
+
+        currentValRef.current = newVal;
+        onChange(newVal);
+      }
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+      if (isDraggingRef.current) {
+        setIsScrubbing(false);
+        onCommit(currentValRef.current);
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
+
+  return (
+    <div className={className} style={style}>
+      <label
+        className={`scrubbable-label ${isScrubbing ? "scrubbing" : ""}`}
+        onMouseDown={handleMouseDown}
+        title="Click and drag left/right to adjust value"
+      >
+        {label} {unitSymbol ? `(${unitSymbol})` : ""}
+      </label>
+      <input
+        type="number"
+        id={id}
+        step={step}
+        min={min}
+        max={max}
+        value={isNaN(value) ? "" : value}
+        onMouseDown={handleMouseDown}
+        onFocus={() => {
+          if (onStartEdit) onStartEdit();
+        }}
+        onChange={(e) => {
+          if (isDraggingRef.current) return;
+          const val = parseFloat(e.target.value);
+          if (!isNaN(val)) {
+            currentValRef.current = val;
+            onChange(val);
+          }
+        }}
+        onBlur={(e) => {
+          if (isDraggingRef.current) return;
+          const val = parseFloat(e.target.value);
+          if (!isNaN(val)) {
+            onCommit(val);
+          }
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.currentTarget.blur();
+          }
+        }}
+      />
+    </div>
+  );
+}
+
+
+
+
+
 
 
 interface InspectorPanelProps {
@@ -723,32 +968,28 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Ring Boundaries
           </h3>
           <div className="info-card control-double-row">
-            <div>
-              <label>Inner Rad ({unitSymbol})</label>
-              <input
-                type="number"
-                id="ring-inner-radius"
-                min="0"
-                step={stepVal}
-                value={formatUnitValue(activeNode.innerRadius || 0, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ innerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-                onBlur={(e) => handleCommitEdit({ innerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-              />
-            </div>
-            <div>
-              <label>Outer Rad ({unitSymbol})</label>
-              <input
-                type="number"
-                id="ring-outer-radius"
-                min="0"
-                step={stepVal}
-                value={formatUnitValue(activeNode.outerRadius || 100, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ outerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-                onBlur={(e) => handleCommitEdit({ outerRadius: Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-              />
-            </div>
+            <ScrubbableNumberField
+              id="ring-inner-radius"
+              label="Inner Rad"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.innerRadius || 0}
+              activeUnit={activeUnit}
+              minPx={0}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ innerRadius: px })}
+              onCommit={(px) => handleCommitEdit({ innerRadius: px })}
+            />
+            <ScrubbableNumberField
+              id="ring-outer-radius"
+              label="Outer Rad"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.outerRadius || 100}
+              activeUnit={activeUnit}
+              minPx={0}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ outerRadius: px })}
+              onCommit={(px) => handleCommitEdit({ outerRadius: px })}
+            />
           </div>
           <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
             <div>
@@ -770,18 +1011,15 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
               </select>
             </div>
             {activeNode.ringShape === "polygon" && (
-              <div>
-                <label>Polygon Sides</label>
-                <input
-                  type="number"
-                  min="3"
-                  max="360"
-                  value={activeNode.polygonSides || 6}
-                  onFocus={handleStartEdit}
-                  onChange={(e) => handleTransientEdit({ polygonSides: Math.max(3, Math.min(360, parseInt(e.target.value) || 3)) })}
-                  onBlur={(e) => handleCommitEdit({ polygonSides: Math.max(3, Math.min(360, parseInt(e.target.value) || 3)) })}
-                />
-              </div>
+              <ScrubbableRawField
+                label="Polygon Sides"
+                value={activeNode.polygonSides || 6}
+                min={3}
+                max={360}
+                onStartEdit={handleStartEdit}
+                onChange={(val) => handleTransientEdit({ polygonSides: Math.max(3, Math.min(360, Math.round(val))) })}
+                onCommit={(val) => handleCommitEdit({ polygonSides: Math.max(3, Math.min(360, Math.round(val))) })}
+              />
             )}
           </div>
           {activeNode.ringShape === "polygon" && (
@@ -805,21 +1043,15 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             </div>
           )}
           <div className="info-card" style={{ marginTop: "10px" }}>
-            <label>Radial Slice Grid ({activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4)} Slices)</label>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center", marginTop: "4px" }}>
-              <input
-                type="number"
-                min="2"
-                max="360"
-                value={activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ radialSlices: Math.max(2, Math.min(360, parseInt(e.target.value) || 2)) })}
-                onBlur={(e) => handleCommitEdit({ radialSlices: Math.max(2, Math.min(360, parseInt(e.target.value) || 2)) })}
-              />
-              <span style={{ fontSize: "11px", color: "#94a3b8", whiteSpace: "nowrap" }}>
-                ({(360 / (activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4))).toFixed(2)}° steps)
-              </span>
-            </div>
+            <ScrubbableRawField
+              label="Radial Slices"
+              value={activeNode.radialSlices || (activeNode.ringShape === "polygon" ? activeNode.polygonSides || 6 : 4)}
+              min={2}
+              max={360}
+              onStartEdit={handleStartEdit}
+              onChange={(val) => handleTransientEdit({ radialSlices: Math.max(2, Math.min(360, Math.round(val))) })}
+              onCommit={(val) => handleCommitEdit({ radialSlices: Math.max(2, Math.min(360, Math.round(val))) })}
+            />
           </div>
           <div className="info-card" style={{ marginTop: "10px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px" }}>
@@ -928,30 +1160,28 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Transform
           </h3>
           <div className="info-card control-double-row">
-            <div>
-              <label>Position X ({unitSymbol})</label>
-              <input
-                type="number"
-                id="transform-x"
-                step={stepVal}
-                value={formatUnitValue(activeNode.transform.x || 0, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ transform: { x: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
-                onBlur={(e) => handleCommitEdit({ transform: { x: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
-              />
-            </div>
-            <div>
-              <label>Position Y ({unitSymbol})</label>
-              <input
-                type="number"
-                id="transform-y"
-                step={stepVal}
-                value={formatUnitValue(activeNode.transform.y || 0, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ transform: { y: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
-                onBlur={(e) => handleCommitEdit({ transform: { y: toPixels(parseFloat(e.target.value) || 0, activeUnit) } })}
-              />
-            </div>
+            <ScrubbableNumberField
+              id="transform-x"
+              label="Position X"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.transform.x || 0}
+              activeUnit={activeUnit}
+              minPx={-10000}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ transform: { x: px } })}
+              onCommit={(px) => handleCommitEdit({ transform: { x: px } })}
+            />
+            <ScrubbableNumberField
+              id="transform-y"
+              label="Position Y"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.transform.y || 0}
+              activeUnit={activeUnit}
+              minPx={-10000}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ transform: { y: px } })}
+              onCommit={(px) => handleCommitEdit({ transform: { y: px } })}
+            />
           </div>
           <div className="info-card" style={{ marginTop: "10px" }}>
             <label>Rotation: {Math.round(activeNode.transform.rotation)}°</label>
@@ -967,36 +1197,29 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             />
           </div>
           <div className="info-card control-double-row" style={{ marginTop: "10px" }}>
-            <div>
-              <label>Scale X</label>
-              <input
-                type="number"
-                id="transform-scale-x"
-                step="0.1"
-                min="0.1"
-                max="10"
-                value={activeNode.transform.scaleX || 1}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ transform: { scaleX: parseFloat(e.target.value) || 1 } })}
-                onBlur={(e) => handleCommitEdit({ transform: { scaleX: parseFloat(e.target.value) || 1 } })}
-              />
-            </div>
-            <div>
-              <label>Scale Y</label>
-              <input
-                type="number"
-                id="transform-scale-y"
-                step="0.1"
-                min="0.1"
-                max="10"
-                value={activeNode.transform.scaleY || 1}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ transform: { scaleY: parseFloat(e.target.value) || 1 } })}
-                onBlur={(e) => handleCommitEdit({ transform: { scaleY: parseFloat(e.target.value) || 1 } })}
-              />
-            </div>
+            <ScrubbableRawField
+              id="transform-scale-x"
+              label="Scale X"
+              value={activeNode.transform.scaleX || 1}
+              step={0.1}
+              min={0.1}
+              max={10}
+              onStartEdit={handleStartEdit}
+              onChange={(val) => handleTransientEdit({ transform: { scaleX: val } })}
+              onCommit={(val) => handleCommitEdit({ transform: { scaleX: val } })}
+            />
+            <ScrubbableRawField
+              id="transform-scale-y"
+              label="Scale Y"
+              value={activeNode.transform.scaleY || 1}
+              step={0.1}
+              min={0.1}
+              max={10}
+              onStartEdit={handleStartEdit}
+              onChange={(val) => handleTransientEdit({ transform: { scaleY: val } })}
+              onCommit={(val) => handleCommitEdit({ transform: { scaleY: val } })}
+            />
           </div>
-
         </div>
       )}
 
@@ -1008,16 +1231,16 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Circle Parameters
           </h3>
           <div className="info-card">
-            <label>Radius ({unitSymbol})</label>
-            <input
-              type="number"
+            <ScrubbableNumberField
               id="circle-radius"
-              min="0.1"
-              step={stepVal}
-              value={formatUnitValue(activeNode.radius || 10, activeUnit)}
-              onFocus={handleStartEdit}
-              onChange={(e) => handleTransientEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-              onBlur={(e) => handleCommitEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
+              label="Radius"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.radius || 10}
+              activeUnit={activeUnit}
+              minPx={0.1}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ radius: px })}
+              onCommit={(px) => handleCommitEdit({ radius: px })}
             />
           </div>
         </div>
@@ -1031,32 +1254,28 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Rect Dimensions
           </h3>
           <div className="info-card control-double-row">
-            <div>
-              <label>Width ({unitSymbol})</label>
-              <input
-                type="number"
-                id="rect-width"
-                min="0.1"
-                step={stepVal}
-                value={formatUnitValue(activeNode.width || 10, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-                onBlur={(e) => handleCommitEdit({ width: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-              />
-            </div>
-            <div>
-              <label>Height ({unitSymbol})</label>
-              <input
-                type="number"
-                id="rect-height"
-                min="0.1"
-                step={stepVal}
-                value={formatUnitValue(activeNode.height || 10, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-                onBlur={(e) => handleCommitEdit({ height: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-              />
-            </div>
+            <ScrubbableNumberField
+              id="rect-width"
+              label="Width"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.width || 10}
+              activeUnit={activeUnit}
+              minPx={0.1}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ width: px })}
+              onCommit={(px) => handleCommitEdit({ width: px })}
+            />
+            <ScrubbableNumberField
+              id="rect-height"
+              label="Height"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.height || 10}
+              activeUnit={activeUnit}
+              minPx={0.1}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ height: px })}
+              onCommit={(px) => handleCommitEdit({ height: px })}
+            />
           </div>
         </div>
       )}
@@ -1069,32 +1288,27 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             Polygon parameters
           </h3>
           <div className="info-card control-double-row">
-            <div>
-              <label>Radius ({unitSymbol})</label>
-              <input
-                type="number"
-                id="polygon-radius"
-                min="0.1"
-                step={stepVal}
-                value={formatUnitValue(activeNode.radius || 10, activeUnit)}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-                onBlur={(e) => handleCommitEdit({ radius: Math.max(0.1, toPixels(parseFloat(e.target.value) || 0, activeUnit)) })}
-              />
-            </div>
-            <div>
-              <label>Sides</label>
-              <input
-                type="number"
-                id="polygon-sides"
-                min="3"
-                max="360"
-                value={activeNode.sides || 5}
-                onFocus={handleStartEdit}
-                onChange={(e) => handleTransientEdit({ sides: Math.max(3, parseInt(e.target.value) || 3) })}
-                onBlur={(e) => handleCommitEdit({ sides: Math.max(3, parseInt(e.target.value) || 3) })}
-              />
-            </div>
+            <ScrubbableNumberField
+              id="polygon-radius"
+              label="Radius"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.radius || 10}
+              activeUnit={activeUnit}
+              minPx={0.1}
+              onStartEdit={handleStartEdit}
+              onChange={(px) => handleTransientEdit({ radius: px })}
+              onCommit={(px) => handleCommitEdit({ radius: px })}
+            />
+            <ScrubbableRawField
+              id="polygon-sides"
+              label="Sides"
+              value={activeNode.sides || 5}
+              min={3}
+              max={360}
+              onStartEdit={handleStartEdit}
+              onChange={(val) => handleTransientEdit({ sides: Math.max(3, Math.round(val)) })}
+              onCommit={(val) => handleCommitEdit({ sides: Math.max(3, Math.round(val)) })}
+            />
           </div>
           {(activeNode.sides || 5) === 3 && (
             <div className="info-card" style={{ marginTop: "10px" }}>

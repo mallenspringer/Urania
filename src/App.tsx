@@ -17,7 +17,9 @@ import {
   ChevronRight,
   Eye,
   EyeOff,
+  Image as ImageIcon,
 } from "lucide-react";
+import { importImageAsset } from "./features/tools/imageTool";
 import { useProjectStore } from "./features/project/projectStore";
 import { useSelectionStore } from "./features/selection/selectionStore";
 import { useViewStore } from "./features/project/viewStore";
@@ -42,6 +44,7 @@ import { ExportModal } from "./shared/ui/ExportModal";
 import { DeleteLayerModal } from "./shared/ui/DeleteLayerModal";
 import { Dashboard } from "./shared/ui/Dashboard";
 import { IntroLoader } from "./shared/ui/IntroLoader";
+import { NavigatorTree } from "./shared/ui/NavigatorTree";
 import {
   cloneProjectWithNewIds,
   loadAutosave,
@@ -248,6 +251,18 @@ export default function App() {
     setDragOverCardIdx(null);
   };
 
+  const imageFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileImportChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      importImageAsset(file, activeRingId).catch((err) =>
+        console.error("Image import failed:", err)
+      );
+    }
+    e.target.value = "";
+  };
+
   // Undo / Redo controls
   const handleUndo = () => undo();
   const handleRedo = () => redo();
@@ -438,6 +453,22 @@ export default function App() {
                 </button>
               </div>
 
+              <button
+                onClick={() => imageFileInputRef.current?.click()}
+                className="btn btn-secondary"
+                title="Import PNG, JPG, or SVG asset"
+              >
+                <ImageIcon size={14} />
+                Import Image
+              </button>
+              <input
+                ref={imageFileInputRef}
+                type="file"
+                accept="image/*,.svg"
+                style={{ display: "none" }}
+                onChange={handleFileImportChange}
+              />
+
               <button onClick={() => setShowExportModal(true)} className="btn btn-secondary">
                 <FileCode size={14} />
                 Export Project
@@ -559,207 +590,7 @@ export default function App() {
                     </div>
                   )}
 
-                  <div className="rings-list">
-                    {uiRings.length === 0 ? (
-                      <div className="empty-state">
-                        <Layers size={24} />
-                        <p>No active rings found</p>
-                        <button onClick={handleAddRing} className="btn btn-sm btn-primary">
-                          Create One
-                        </button>
-                      </div>
-                    ) : (
-                      uiRings.map((ring, uiIdx) => {
-                        const isSelected = selectedItems.some((item) => item.id === ring.id);
-                        const isFocused = activeRingId === ring.id;
-                        const isDragging = draggedCardIdx === uiIdx;
-                        const isDragOver = dragOverCardIdx === uiIdx;
-                        const ringColorIdx = rings.length - 1 - uiIdx;
-
-                        return (
-                          <div
-                            key={ring.id}
-                            draggable
-                            onDragStart={(e) => handleCardDragStart(e, uiIdx)}
-                            onDragOver={(e) => handleCardDragOver(e, uiIdx)}
-                            onDrop={(e) => handleCardDrop(e, uiIdx)}
-                            onDragEnd={handleCardDragEnd}
-                            className={`ring-control-card ${isSelected ? "selected" : ""} ${
-                              isFocused ? "focused-ring" : ""
-                            } ${isDragging ? "dragging" : ""} ${isDragOver ? "drag-over" : ""} ${
-                              ring.visible === false ? "is-hidden" : ""
-                            }`}
-                            onClick={(e) => {
-                              const target = e.target as HTMLElement;
-                              if (
-                                target.tagName !== "INPUT" &&
-                                target.tagName !== "TEXTAREA" &&
-                                target.tagName !== "BUTTON" &&
-                                !target.closest("button")
-                              ) {
-                                selectItem(
-                                  ring.id,
-                                  "ring",
-                                  e.shiftKey || e.ctrlKey || e.metaKey
-                                );
-                                setActiveRingId(ring.id);
-                              }
-                            }}
-                          >
-                            <div className="card-header">
-                              <span className="drag-handle" title="Drag to reorder layer stack">
-                                <GripVertical size={14} />
-                              </span>
-                              <span
-                                className="ring-index"
-                                style={{
-                                  backgroundColor: RING_COLORS[ringColorIdx % RING_COLORS.length],
-                                  color: "#fff",
-                                }}
-                                title={uiIdx === 0 ? "Top-most Ring Layer" : uiIdx === uiRings.length - 1 ? "Base Ring Layer" : `Ring Layer #${uiIdx + 1}`}
-                              >
-                                #{uiIdx + 1}
-                              </span>
-                              <input
-                                type="text"
-                                className="ring-name-input"
-                                value={ring.name || ""}
-                                onChange={(e) => {
-                                  const name = e.target.value;
-                                  setProject({
-                                    ...project,
-                                    mechanism: {
-                                      ...project.mechanism,
-                                      children: (project.mechanism.children || []).map((c) =>
-                                        c.id === ring.id ? { ...c, name } : c
-                                      ),
-                                    },
-                                  });
-                                }}
-                              />
-                              <div className="card-header-actions">
-                                <button
-                                  onClick={() => handleToggleRingVisibility(ring)}
-                                  className={`toggle-visible-btn ${ring.visible === false ? "hidden-layer" : ""}`}
-                                  title={ring.visible === false ? "Show Ring Layer" : "Hide Ring Layer"}
-                                >
-                                  {ring.visible === false ? <EyeOff size={14} /> : <Eye size={14} />}
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteRing(ring)}
-                                  className="delete-btn"
-                                  title="Delete Ring"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-                            </div>
-
-                            <div className="card-body">
-                              {/* Active Rotation Control Slider */}
-                              <div className="control-row">
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%", marginBottom: "4px" }}>
-                                  <label style={{ margin: 0 }}>Rotation Angle</label>
-                                  <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
-                                    <input
-                                      type="number"
-                                      step="any"
-                                      min="0"
-                                      max="360"
-                                      className="ring-rotation-number-input"
-                                      style={{
-                                        width: "60px",
-                                        padding: "2px 4px",
-                                        fontSize: "11px",
-                                        textAlign: "right",
-                                        backgroundColor: "#0b0c0f",
-                                        border: "1px solid #232530",
-                                        color: "#f8fafc",
-                                        borderRadius: "4px",
-                                      }}
-                                      value={ring.rotation ?? 0}
-                                      onFocus={() => handleRotationStart(ring.id, ring.rotation)}
-                                      onChange={(e) => {
-                                        const val = e.target.value === "" ? 0 : parseFloat(e.target.value);
-                                        if (!isNaN(val)) {
-                                          handleRotationChange(ring.id, val);
-                                        }
-                                      }}
-                                      onBlur={(e) => {
-                                        const val = parseFloat(e.target.value) || 0;
-                                        handleRotationEnd(ring.id, val);
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") {
-                                          e.currentTarget.blur();
-                                        }
-                                      }}
-                                    />
-                                    <span style={{ fontSize: "11px", color: "#94a3b8" }}>°</span>
-                                  </div>
-                                </div>
-                                <input
-                                  type="range"
-                                  min="0"
-                                  max="360"
-                                  step="1"
-                                  value={ring.rotation}
-                                  onMouseDown={() =>
-                                    handleRotationStart(ring.id, ring.rotation)
-                                  }
-                                  onChange={(e) =>
-                                    handleRotationChange(ring.id, parseFloat(e.target.value))
-                                  }
-                                  onMouseUp={(e) =>
-                                    handleRotationEnd(
-                                      ring.id,
-                                      parseFloat((e.target as HTMLInputElement).value)
-                                    )
-                                  }
-                                />
-                              </div>
-
-                              {/* Dimensional Boundary Controllers */}
-                              <div className="control-double-row">
-                                <div>
-                                  <label>Inner Rad ({unitSymbol})</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step={stepVal}
-                                    value={formatUnitValue(ring.innerRadius || 0, activeUnit)}
-                                    onChange={(e) =>
-                                      handleRadiusChange(
-                                        ring.id,
-                                        "innerRadius",
-                                        Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit))
-                                      )
-                                    }
-                                  />
-                                </div>
-                                <div>
-                                  <label>Outer Rad ({unitSymbol})</label>
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    step={stepVal}
-                                    value={formatUnitValue(ring.outerRadius || 100, activeUnit)}
-                                    onChange={(e) =>
-                                      handleRadiusChange(
-                                        ring.id,
-                                        "outerRadius",
-                                        Math.max(0, toPixels(parseFloat(e.target.value) || 0, activeUnit))
-                                      )
-                                    }
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
+                  <NavigatorTree onDeleteRingConfirm={handleDeleteRing} />
                 </div>
               ) : (
                 <div className="tab-panel-content">

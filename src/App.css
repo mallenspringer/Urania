@@ -1676,5 +1676,248 @@
   transform: translateY(-2px);
 }
 
+/* Navigator Tree Styling */
+.navigator-tree-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px;
+}
+
+.tree-ring-group {
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.tree-ring-group:hover {
+  border-color: rgba(99, 102, 241, 0.3);
+}
+
+.tree-ring-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background-color: rgba(18, 19, 26, 0.9);
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: #f1f5f9;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.tree-ring-header.selected {
+  background-color: rgba(99, 102, 241, 0.15);
+  border-color: rgba(99, 102, 241, 0.4);
+}
+
+.tree-ring-header.focused-ring {
+  border-left: 3px solid #6366f1;
+}
+
+.tree-ring-header.is-hidden {
+  opacity: 0.5;
+}
+
+.ring-index-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 700;
+  color: white;
+}
+
+.ring-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-children-container {
+  display: flex;
+  flex-direction: column;
+  background-color: rgba(0, 0, 0, 0.2);
+}
+
+.tree-node-wrapper {
+  display: flex;
+  flex-direction: column;
+}
+
+.tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  color: #cbd5e1;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  transition: background-color 0.15s ease;
+}
+
+.tree-node-row:hover {
+  background-color: rgba(255, 255, 255, 0.04);
+}
+
+.tree-node-row.selected {
+  background-color: rgba(99, 102, 241, 0.2);
+  color: #ffffff;
+}
+
+.tree-node-row.focused {
+  border-left: 3px solid #818cf8;
+}
+
+.tree-node-row.is-hidden {
+  opacity: 0.4;
+}
+
+.tree-node-row.is-locked {
+  background-color: rgba(239, 68, 68, 0.05);
+}
+
+.expand-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  padding: 2px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  border-radius: 3px;
+}
+
+.expand-btn:hover {
+  color: #f8fafc;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.expand-spacer {
+  width: 16px;
+}
+
+.node-icon {
+  color: #818cf8;
+  flex-shrink: 0;
+}
+
+.node-icon.sector-icon {
+  color: #f59e0b;
+}
+
+.node-icon.window-icon {
+  color: #ef4444;
+}
+
+.node-icon.tab-icon {
+  color: #10b981;
+}
+
+.node-icon.text-icon {
+  color: #3b82f6;
+}
+
+.node-icon.image-icon {
+  color: #ec4899;
+}
+
+.node-label {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sector-span-badge {
+  font-size: 10px;
+  color: #94a3b8;
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+  margin-right: 4px;
+}
+
+.node-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.7;
+}
+
+.tree-node-row:hover .node-actions,
+.tree-ring-header:hover .node-actions {
+  opacity: 1;
+}
+
+.action-icon-btn {
+  background: none;
+  border: none;
+  color: #94a3b8;
+  padding: 3px;
+  cursor: pointer;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  transition: all 0.15s ease;
+}
+
+.action-icon-btn:hover {
+  color: #f8fafc;
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.action-icon-btn.inactive {
+  color: #ef4444;
+}
+
+.action-icon-btn.active-lock {
+  color: #f59e0b;
+}
+
+.action-icon-btn.delete-btn:hover {
+  color: #ef4444;
+  background-color: rgba(239, 68, 68, 0.15);
+}
+
+.tree-rename-input {
+  flex: 1;
+  background-color: #0b0c0f;
+  border: 1px solid #6366f1;
+  color: #ffffff;
+  padding: 1px 4px;
+  font-size: 11px;
+  border-radius: 3px;
+  outline: none;
+}
+
+/* Scrubbable Input Label Styling */
+.scrubbable-label {
+  cursor: ew-resize !important;
+  user-select: none;
+  transition: color 0.15s ease;
+}
+
+.scrubbable-label:hover {
+  color: #818cf8 !important;
+}
+
+.scrubbable-label.scrubbing {
+  color: #c084fc !important;
+}
+
+
+
 
 
