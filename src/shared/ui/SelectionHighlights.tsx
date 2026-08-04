@@ -362,8 +362,8 @@ const SelectionOutline: React.FC<SelectionOutlineProps> = ({ node, isActive }) =
       <Rect
         x={bx - 3}
         y={by - 3}
-        width={width + 6}
-        height={height + 6}
+        width={Math.max(1, width + 6)}
+        height={Math.max(1, height + 6)}
         stroke={strokeColor}
         strokeWidth={invStroke}
         dash={[4 / sx, 4 / sy]}

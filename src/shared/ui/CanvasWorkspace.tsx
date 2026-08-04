@@ -836,14 +836,18 @@ export const CanvasWorkspace: React.FC = () => {
   const marqueeRect = useMemo(() => {
     if (activeToolId === "select" && previewData && previewData.isDragging) {
       const { x1, y1, x2, y2 } = previewData;
-      const rx = Math.min(x1, x2);
-      const ry = Math.min(y1, y2);
-      return {
-        x: rx,
-        y: ry,
-        width: Math.max(0.1, Math.abs(x2 - x1)),
-        height: Math.max(0.1, Math.abs(y2 - y1)),
-      };
+      const w = Math.abs(x2 - x1);
+      const h = Math.abs(y2 - y1);
+      if (w > 1 && h > 1) {
+        const rx = Math.min(x1, x2);
+        const ry = Math.min(y1, y2);
+        return {
+          x: rx,
+          y: ry,
+          width: w,
+          height: h,
+        };
+      }
     }
     return null;
   }, [activeToolId, previewData]);

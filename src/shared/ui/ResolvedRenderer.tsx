@@ -476,7 +476,12 @@ const KonvaImageRenderer: React.FC<{ node: ResolvedNode; assets: any[] }> = ({
       const img = new window.Image();
       img.src = asset.embeddedData;
       img.onload = () => {
-        setImageEl(img);
+        if (img.width > 0 && img.height > 0) {
+          setImageEl(img);
+        }
+      };
+      img.onerror = () => {
+        setImageEl(null);
       };
     } else {
       setImageEl(null);
@@ -485,7 +490,7 @@ const KonvaImageRenderer: React.FC<{ node: ResolvedNode; assets: any[] }> = ({
 
   const { width = 100, height = 100 } = node.bounds;
 
-  if (imageEl) {
+  if (imageEl && imageEl.complete && imageEl.width > 0 && imageEl.height > 0 && width > 0 && height > 0) {
     return (
       <KonvaImage
         image={imageEl}
