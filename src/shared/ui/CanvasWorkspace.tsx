@@ -436,7 +436,9 @@ export const CanvasWorkspace: React.FC = () => {
     const resizeObserver = new ResizeObserver((entries) => {
       for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        setDimensions({ width, height });
+        if (width > 10 && height > 10) {
+          setDimensions({ width, height });
+        }
       }
     });
     resizeObserver.observe(containerRef.current);
@@ -1454,8 +1456,8 @@ export const CanvasWorkspace: React.FC = () => {
       </div>
 
       <Stage
-        width={dimensions.width}
-        height={dimensions.height}
+        width={Math.max(100, dimensions.width)}
+        height={Math.max(100, dimensions.height)}
         x={stageX}
         y={stageY}
         scaleX={zoom}

@@ -1290,28 +1290,20 @@ export const ResolvedRenderer: React.FC<ResolvedRendererProps> = ({ nodes }) => 
                   points={[-tWidth/2, -tHeight/2,  tWidth/2, -tHeight*0.3,  tWidth/2, tHeight*0.3,  -tWidth/2, tHeight/2]}
                   closed
                   fill={ringColor}
-                  stroke={isSelected ? "#ffffff" : "rgba(0, 0, 0, 0.3)"}
+                  stroke={isSelected ? "#ffffff" : "rgba(0, 0, 0, 0.4)"}
                   strokeWidth={isSelected ? 2 : 1}
-                  shadowColor="black"
-                  shadowBlur={3}
-                  shadowOpacity={0.4}
-                  shadowOffset={{ x: 0, y: 1 }}
                   cursor="pointer"
                 />
               ) : (
                 <Rect
                   x={-tWidth/2}
                   y={-tHeight/2}
-                  width={tWidth}
-                  height={tHeight}
+                  width={Math.max(1, tWidth)}
+                  height={Math.max(1, tHeight)}
                   fill={ringColor}
-                  stroke={isSelected ? "#ffffff" : "rgba(0, 0, 0, 0.3)"}
+                  stroke={isSelected ? "#ffffff" : "rgba(0, 0, 0, 0.4)"}
                   strokeWidth={isSelected ? 2 : 1}
                   cornerRadius={tShape === "semicircular" ? [0, tHeight / 2, tHeight / 2, 0] : 0}
-                  shadowColor="black"
-                  shadowBlur={3}
-                  shadowOpacity={0.4}
-                  shadowOffset={{ x: 0, y: 1 }}
                   cursor="pointer"
                 />
               )}
