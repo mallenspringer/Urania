@@ -54,7 +54,7 @@ export const curveTool: Tool = {
 
   onMouseUp(_e, context) {
     if (!context.currentPreviewData || !context.currentPreviewData.isDragging) return;
-    const { startX, startY, currentX, currentY } = context.currentPreviewData;
+    const { startX, startY, currentX, currentY } = context.currentPreviewData as any;
     context.updatePreview(null);
 
     const activeRing = getActiveRingNode(context);
@@ -170,7 +170,7 @@ export const curveTool: Tool = {
   },
 
   renderPreview(context) {
-    const preview = context.currentPreviewData;
+    const preview = context.currentPreviewData as any;
     if (!preview || !preview.isDragging) return null;
 
     const activeRing = getActiveRingNode(context);
@@ -267,7 +267,7 @@ export const arcTool: Tool = {
 
   onMouseUp(_e, context) {
     if (!context.currentPreviewData || !context.currentPreviewData.isDragging) return;
-    const { startX, startY, currentX, currentY } = context.currentPreviewData;
+    const { startX, startY, currentX, currentY } = context.currentPreviewData as any;
     context.updatePreview(null);
 
     const activeRing = getActiveRingNode(context);
@@ -379,7 +379,7 @@ export const arcTool: Tool = {
   },
 
   renderPreview(context) {
-    const preview = context.currentPreviewData;
+    const preview = context.currentPreviewData as any;
     if (!preview || !preview.isDragging) return null;
 
     const activeRing = getActiveRingNode(context);

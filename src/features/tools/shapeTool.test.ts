@@ -225,7 +225,7 @@ describe("Milestone 1 Refinement: 8-Handle Resizing (Corner = Linked, Side = 1D)
     };
 
     // Trigger onMouseMove
-    selectTool.onMouseMove!(null, mockContext);
+    selectTool.onMouseMove!(null as any, mockContext);
 
     // Get the updated node
     const updatedNode = useProjectStore.getState().project.mechanism.children![0].children![0] as any;
@@ -309,7 +309,7 @@ describe("Milestone 1 Refinement: 8-Handle Resizing (Corner = Linked, Side = 1D)
       isAlt: false,
     });
 
-    selectTool.onMouseMove!(null, getContext());
+    selectTool.onMouseMove!(null as any, getContext());
 
     let updatedNode = useProjectStore.getState().project.mechanism.children![0].children![0] as any;
 
@@ -329,7 +329,7 @@ describe("Milestone 1 Refinement: 8-Handle Resizing (Corner = Linked, Side = 1D)
       y1: 100,
     });
 
-    selectTool.onMouseMove!(null, getContext());
+    selectTool.onMouseMove!(null as any, getContext());
 
     updatedNode = useProjectStore.getState().project.mechanism.children![0].children![0] as any;
 

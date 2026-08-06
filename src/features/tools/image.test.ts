@@ -183,7 +183,7 @@ describe("Image Node Placement & Asset Embedding", () => {
     const resolved = resolveProject(project);
     const resolvedImage = resolved.find((n: any) => n.id === "cropped-image-node");
     expect(resolvedImage).toBeDefined();
-    expect(resolvedImage.renderData.crop).toEqual({ x: 50, y: 50, width: 300, height: 200 });
+    expect(resolvedImage?.renderData.crop).toEqual({ x: 50, y: 50, width: 300, height: 200 });
 
     // 2. Verify SVG export renders viewBox crop container
     const svgResult = generateSVG(project, {

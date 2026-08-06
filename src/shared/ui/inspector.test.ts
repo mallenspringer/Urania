@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import { useProjectStore, createEmptyProject } from "../../features/project/projectStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";
 import { CreateRingCommand, CreateNodeCommand, UpdateMultipleNodesCommand } from "../../features/project/commands";
-import type { RingNode, RectangleNode, TextNode } from "../types/project";
+import type { RingNode, RectangleNode } from "../types/project";
 
 describe("Inspector Multi-Selection & Project Settings Logic", () => {
   beforeEach(() => {

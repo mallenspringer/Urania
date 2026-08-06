@@ -1,10 +1,9 @@
 import { describe, it, expect } from "vitest";
 import { findNodeInTree, findParentNode, isDescendantOf, isPointInsideNode, getNodeKeyPoints } from "./geometry";
-import type { Project } from "../types/project";
 import type { ResolvedNode } from "../../features/runtime/mechanismEngine";
 
 describe("geometry utilities", () => {
-  const sampleProject: Project = {
+  const sampleProject: any = {
     id: "proj-1",
     schemaVersion: 1,
     name: "Test Project",
@@ -12,7 +11,7 @@ describe("geometry utilities", () => {
     modified: "2026-01-01",
     mechanism: {
       id: "root-1",
-      type: "root",
+      type: "volvelle",
       name: "Root",
       transform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
       visible: true,
@@ -77,6 +76,8 @@ describe("geometry utilities", () => {
       worldTransform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
       bounds: { x: -100, y: -100, width: 200, height: 200 },
       renderData: { outerRadius: 100, innerRadius: 50 },
+      visible: true,
+      maskIds: [],
     };
 
     // Point at r = 75 is inside (50 < 75 < 100)
@@ -95,6 +96,8 @@ describe("geometry utilities", () => {
       worldTransform: { x: 0, y: 0, rotation: 0, scaleX: 1, scaleY: 1 },
       bounds: { x: -100, y: -100, width: 200, height: 200 },
       renderData: { outerRadius: 100, innerRadius: 50 },
+      visible: true,
+      maskIds: [],
     };
 
     const keyPoints = getNodeKeyPoints(resolvedRingNode);

@@ -68,7 +68,7 @@ export const createShapeTool = (shapeType: "rectangle" | "circle" | "polygon" | 
 
     onMouseUp(_e, context) {
       if (!context.currentPreviewData || !context.currentPreviewData.isDragging) return;
-      const { startX, startY, currentX, currentY } = context.currentPreviewData;
+      const { startX, startY, currentX, currentY } = context.currentPreviewData as any;
       context.updatePreview(null);
 
       const activeRing = getActiveRingNode(context);
@@ -353,7 +353,7 @@ export const createShapeTool = (shapeType: "rectangle" | "circle" | "polygon" | 
 
     renderPreview(context) {
       if (!context.currentPreviewData) return null;
-      const { startX, startY, currentX, currentY } = context.currentPreviewData;
+      const { startX, startY, currentX, currentY } = context.currentPreviewData as any;
 
       const activeRing = getActiveRingNode(context);
       if (!activeRing) return null;

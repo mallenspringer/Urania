@@ -3,7 +3,6 @@ import {
   Undo2,
   Redo2,
   Plus,
-  Trash2,
   Info,
   Sliders,
   Layers,
@@ -12,11 +11,8 @@ import {
   XCircle,
   Home,
   ArrowRight,
-  GripVertical,
   ChevronLeft,
   ChevronRight,
-  Eye,
-  EyeOff,
   Image as ImageIcon,
 } from "lucide-react";
 import { importImageAsset } from "./features/tools/imageTool";
@@ -25,7 +21,6 @@ import { useSelectionStore } from "./features/selection/selectionStore";
 import { useViewStore } from "./features/project/viewStore";
 import { useValidationStore } from "./features/validation/validationStore";
 import { findRingForNode } from "./shared/utils/geometry";
-import { formatUnitValue, toPixels, getUnitSymbol, type Unit } from "./shared/utils/unitConversion";
 import { resolveProject } from "./features/runtime/mechanismEngine";
 import type {
   Project,
@@ -34,9 +29,6 @@ import type {
 import {
   CreateRingCommand,
   DeleteRingCommand,
-  RotateRingCommand,
-  ReorderRingsCommand,
-  UpdateNodeCommand,
 } from "./features/project/commands";
 import { CanvasWorkspace } from "./shared/ui/CanvasWorkspace";
 import { InspectorPanel } from "./shared/ui/InspectorPanel";
@@ -76,9 +68,7 @@ export default function App() {
     setActiveRingId,
   } = useSelectionStore();
 
-  const activeUnit: Unit = project.settings.units || "pixels";
-  const unitSymbol = getUnitSymbol(activeUnit);
-  const stepVal = activeUnit === "pixels" ? 1 : activeUnit === "inches" ? 0.01 : 0.1;
+
 
   const resolvedNodes = useMemo(() => resolveProject(project), [project]);
 
@@ -123,9 +113,7 @@ export default function App() {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  // Ring Card Drag & Drop reordering state
-  const [draggedCardIdx, setDraggedCardIdx] = useState<number | null>(null);
-  const [dragOverCardIdx, setDragOverCardIdx] = useState<number | null>(null);
+
 
   // Dashboard routing states
   const [showDashboard, setShowDashboard] = useState(true);
@@ -192,8 +180,6 @@ export default function App() {
     }
   };
 
-  const startAnglesRef = useRef<Record<string, number>>({});
-
   const rings = (project.mechanism.children || []).filter(
     (c) => c.type === "ring"
   ) as RingNode[];
@@ -214,42 +200,6 @@ export default function App() {
       setActiveRingId(topRing.id);
     }
   }, [showDashboard, uiRings, activeRingId, rings, setActiveRingId]);
-
-  const handleCardDragStart = (e: React.DragEvent, uiIdx: number) => {
-    e.dataTransfer.setData("text/plain", uiIdx.toString());
-    e.dataTransfer.effectAllowed = "move";
-    setDraggedCardIdx(uiIdx);
-  };
-
-  const handleCardDragOver = (e: React.DragEvent, uiIdx: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (dragOverCardIdx !== uiIdx) {
-      setDragOverCardIdx(uiIdx);
-    }
-  };
-
-  const handleCardDrop = (e: React.DragEvent, targetUiIdx: number) => {
-    e.preventDefault();
-    setDragOverCardIdx(null);
-    const sourceUiIdx =
-      draggedCardIdx ?? parseInt(e.dataTransfer.getData("text/plain"), 10);
-    setDraggedCardIdx(null);
-
-    if (isNaN(sourceUiIdx) || sourceUiIdx === targetUiIdx) return;
-
-    const total = rings.length;
-    const fromChildrenIdx = total - 1 - sourceUiIdx;
-    const toChildrenIdx = total - 1 - targetUiIdx;
-
-    const cmd = new ReorderRingsCommand(fromChildrenIdx, toChildrenIdx);
-    executeCommand(cmd);
-  };
-
-  const handleCardDragEnd = () => {
-    setDraggedCardIdx(null);
-    setDragOverCardIdx(null);
-  };
 
   const imageFileInputRef = useRef<HTMLInputElement>(null);
 
@@ -339,65 +289,6 @@ export default function App() {
     }
     executeCommand(new DeleteRingCommand(ringPendingDelete));
     setRingPendingDelete(null);
-  };
-
-  const handleToggleRingVisibility = (ring: RingNode) => {
-    const isCurrentlyHidden = ring.visible === false;
-    const updatedRing: RingNode = {
-      ...ring,
-      visible: isCurrentlyHidden ? true : false,
-    };
-    const cmd = new UpdateNodeCommand(ring.id, ring, updatedRing);
-    executeCommand(cmd);
-  };
-
-  // Real-time slider drag updates (no history pollution)
-  const handleRotationStart = (ringId: string, currentRot: number) => {
-    if (startAnglesRef.current[ringId] === undefined) {
-      startAnglesRef.current[ringId] = currentRot;
-    }
-  };
-
-  const handleRotationChange = (ringId: string, newRot: number) => {
-    const children = project.mechanism.children || [];
-    const updated = {
-      ...project,
-      mechanism: {
-        ...project.mechanism,
-        children: children.map((c) =>
-          c.id === ringId && c.type === "ring" ? { ...c, rotation: newRot } : c
-        ),
-      },
-    };
-    setProject(updated);
-  };
-
-  const handleRotationEnd = (ringId: string, finalRot: number) => {
-    const startRot = startAnglesRef.current[ringId];
-    if (startRot !== undefined && startRot !== finalRot) {
-      const cmd = new RotateRingCommand(ringId, startRot, finalRot);
-      executeCommand(cmd);
-    }
-    delete startAnglesRef.current[ringId];
-  };
-
-  // Ring dimension modifications directly on active state
-  const handleRadiusChange = (
-    ringId: string,
-    field: "innerRadius" | "outerRadius",
-    val: number
-  ) => {
-    const children = project.mechanism.children || [];
-    const updated = {
-      ...project,
-      mechanism: {
-        ...project.mechanism,
-        children: children.map((c) =>
-          c.id === ringId && c.type === "ring" ? { ...c, [field]: val } : c
-        ),
-      },
-    };
-    setProject(updated);
   };
 
   return (

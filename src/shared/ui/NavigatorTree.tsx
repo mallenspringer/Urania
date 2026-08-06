@@ -17,7 +17,6 @@ import {
   Image as ImageIcon,
   Sliders,
   PieChart,
-  HelpCircle,
 } from "lucide-react";
 import { useProjectStore } from "../../features/project/projectStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";

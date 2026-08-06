@@ -6,7 +6,6 @@ import {
   getUnitSymbol,
   formatUnitValue,
   DPI,
-  MM_PER_INCH,
 } from "./unitConversion";
 
 describe("unitConversion utility", () => {

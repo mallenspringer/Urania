@@ -1,7 +1,7 @@
 import type { Project, Asset } from "../../shared/types/project";
 import { resolveProject, type ResolvedNode } from "../runtime/mechanismEngine";
 import { getArcTextCharPositions } from "../../shared/utils/textGeometry";
-import { getRingRadiusAtAngle, getRingSurfaceNormalAngle } from "../../shared/utils/geometry";
+import { getRingRadiusAtAngle } from "../../shared/utils/geometry";
 
 export interface SVGExportOptions {
   layer: "artwork" | "cut" | "fold" | "all";
@@ -130,7 +130,7 @@ function getRingOuterCutPathWithDiscTabs(ringNode: ResolvedNode, tabs: ResolvedN
   }
 
   const sortedTabs = [...tabs].sort((a, b) => (a.renderData.angle || 0) - (b.renderData.angle || 0));
-  const ringData = ringNode.renderData;
+  const ringData = ringNode.renderData as any;
 
   const tabSpans = sortedTabs.map((tab) => {
     const angle = (tab.renderData.angle || 0) % 360;
