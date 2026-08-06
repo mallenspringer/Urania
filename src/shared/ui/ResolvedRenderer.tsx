@@ -489,17 +489,58 @@ const KonvaImageRenderer: React.FC<{ node: ResolvedNode; assets: any[] }> = ({
   }, [asset]);
 
   const { width = 100, height = 100 } = node.bounds;
+  const crop = node.renderData.crop;
 
   if (imageEl && imageEl.complete && imageEl.width > 0 && imageEl.height > 0 && width > 0 && height > 0) {
-    return (
+    const konvaImg = (
       <KonvaImage
         image={imageEl}
+        crop={crop ? { x: crop.x, y: crop.y, width: crop.width, height: crop.height } : undefined}
         x={-width / 2}
         y={-height / 2}
         width={width}
         height={height}
       />
     );
+
+    if (crop?.shape === "circle") {
+      const circleR = crop.radius || Math.min(width, height) / 2;
+      return (
+        <Group clipFunc={(context) => {
+          const ctx = context._context || context;
+          ctx.beginPath();
+          ctx.arc(0, 0, circleR, 0, Math.PI * 2, false);
+          ctx.closePath();
+        }}>
+          {konvaImg}
+        </Group>
+      );
+    }
+
+    if (crop?.shape === "radialTrapezoid") {
+      const sweepDeg = crop.sweepAngle || 60;
+      const halfSweep = (sweepDeg / 2) * (Math.PI / 180);
+      const outerR = crop.outerRadius || Math.max(width, height) / 2;
+      const innerR = Math.max(0, crop.innerRadius || 0);
+
+      return (
+        <Group clipFunc={(context) => {
+          const ctx = context._context || context;
+          ctx.beginPath();
+          ctx.arc(0, 0, outerR, -halfSweep - Math.PI / 2, halfSweep - Math.PI / 2, false);
+          if (innerR > 0) {
+            ctx.arc(0, 0, innerR, halfSweep - Math.PI / 2, -halfSweep - Math.PI / 2, true);
+          } else {
+            ctx.lineTo(0, 0);
+          }
+          ctx.closePath();
+        }}>
+          {konvaImg}
+        </Group>
+      );
+    }
+
+    return konvaImg;
   }
 
   // Placeholder outline when image is not loaded

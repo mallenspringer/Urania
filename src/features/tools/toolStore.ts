@@ -10,6 +10,7 @@ interface ToolState {
   dragStartPos: { x: number; y: number } | null;
   toolSettings: Record<string, any>;
   editingTextNodeId: string | null;
+  croppingImageNodeId: string | null;
 
   setActiveTool: (toolId: string) => void;
   setCreationMode: (mode: "solid" | "cutout") => void;
@@ -20,6 +21,7 @@ interface ToolState {
   setDragStartPos: (pos: { x: number; y: number } | null) => void;
   updateToolSetting: (key: string, value: any) => void;
   setEditingTextNodeId: (id: string | null) => void;
+  setCroppingImageNodeId: (id: string | null) => void;
 }
 
 export const useToolStore = create<ToolState>((set) => ({
@@ -31,6 +33,7 @@ export const useToolStore = create<ToolState>((set) => ({
   previewData: null,
   dragStartPos: null,
   editingTextNodeId: null,
+  croppingImageNodeId: null,
   toolSettings: {
     polygonSides: 5,
     fontSize: 14,
@@ -50,6 +53,7 @@ export const useToolStore = create<ToolState>((set) => ({
   setPreviewData: (data) => set({ previewData: data }),
   setDragStartPos: (pos) => set({ dragStartPos: pos }),
   setEditingTextNodeId: (id) => set({ editingTextNodeId: id }),
+  setCroppingImageNodeId: (id) => set({ croppingImageNodeId: id }),
   updateToolSetting: (key, value) =>
     set((state) => ({
       toolSettings: {

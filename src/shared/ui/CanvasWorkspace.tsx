@@ -31,7 +31,10 @@ import {
   Activity,
   Image as ImageIcon,
   Bookmark,
+  Crop,
 } from "lucide-react";
+import { ImageCropOverlay } from "../../features/tools/ImageCropOverlay";
+import { resetImageNodeCrop } from "../../features/tools/imageTool";
 
 export const CanvasWorkspace: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -81,6 +84,8 @@ export const CanvasWorkspace: React.FC = () => {
     setPreviewData,
     dragStartPos,
     setDragStartPos,
+    croppingImageNodeId,
+    setCroppingImageNodeId,
   } = useToolStore();
 
   const activeTool = toolRegistry.getTool(activeToolId);
@@ -474,6 +479,12 @@ export const CanvasWorkspace: React.FC = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const isEditingInput = document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA";
 
+      if (croppingImageNodeId && (e.key === "Escape" || e.key === "Enter")) {
+        e.preventDefault();
+        setCroppingImageNodeId(null);
+        return;
+      }
+
       if (!isEditingInput && (e.key === "Delete" || e.key === "Backspace")) {
         const selected = useSelectionStore.getState().selectedItems;
         if (selected.length > 0) {
@@ -686,6 +697,15 @@ export const CanvasWorkspace: React.FC = () => {
         setDragStartPos({ x: wx, y: wy });
 
         const context = createToolContext(pointer, { x: wx, y: wy }, e);
+
+        // Click outside cropping image node exits crop mode
+        if (croppingImageNodeId) {
+          const hit = findHitNode({ x: wx, y: wy }, resolvedNodes, context);
+          if (!hit || hit.id !== croppingImageNodeId) {
+            setCroppingImageNodeId(null);
+          }
+        }
+
         if (activeTool?.onMouseDown) {
           activeTool.onMouseDown(e, context);
         }
@@ -1512,8 +1532,79 @@ export const CanvasWorkspace: React.FC = () => {
 
           {/* Visual selection outline overlays */}
           <SelectionHighlights nodes={resolvedNodes} />
+
+          {/* Interactive Image Crop Overlay */}
+          {croppingImageNodeId && (
+            <ImageCropOverlay nodeId={croppingImageNodeId} resolvedNodes={resolvedNodes} />
+          )}
         </Layer>
       </Stage>
+
+      {/* Floating Crop Action Banner */}
+      {croppingImageNodeId && (() => {
+        const croppingNode = resolvedNodes.find((n) => n.id === croppingImageNodeId);
+        const rawNode = findNodeInTree(project.mechanism, croppingImageNodeId);
+        const nodeName = rawNode?.name || croppingNode?.name || "Image";
+
+        return (
+          <div
+            className="crop-floating-bar"
+            style={{
+              position: "absolute",
+              top: "20px",
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 100,
+              display: "flex",
+              gap: "12px",
+              alignItems: "center",
+              backgroundColor: "rgba(11, 12, 15, 0.95)",
+              border: "1px solid rgba(99, 102, 241, 0.4)",
+              borderRadius: "8px",
+              padding: "8px 16px",
+              boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.5)",
+              backdropFilter: "blur(8px)",
+            }}
+          >
+            <span style={{ fontSize: "13px", fontWeight: 600, color: "#f8fafc", display: "flex", alignItems: "center", gap: "6px" }}>
+              <Crop size={15} color="#818cf8" /> Cropping: <span style={{ color: "#cbd5e1", fontWeight: 400 }}>{nodeName}</span>
+            </span>
+            <button
+              onClick={() => setCroppingImageNodeId(null)}
+              style={{
+                backgroundColor: "#6366f1",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                padding: "5px 14px",
+                fontSize: "12px",
+                fontWeight: 600,
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+            {rawNode?.crop && (
+              <button
+                onClick={() => {
+                  if (rawNode) resetImageNodeCrop(rawNode);
+                }}
+                style={{
+                  backgroundColor: "rgba(255, 255, 255, 0.08)",
+                  color: "#cbd5e1",
+                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                  borderRadius: "6px",
+                  padding: "5px 12px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                Reset Crop
+              </button>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Inline Text Editing Overlay */}
       {editingTextNodeId && (() => {

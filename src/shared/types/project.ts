@@ -211,12 +211,27 @@ export interface GroupNode extends ElementNode {
   children: BaseNode[];
 }
 
+export type CropShape = "rectangle" | "circle" | "radialTrapezoid";
+
+export interface ImageCrop {
+  shape?: CropShape;     // Default: "rectangle"
+  x: number;             // Source crop origin X (pixels)
+  y: number;             // Source crop origin Y (pixels)
+  width: number;         // Source crop width (pixels)
+  height: number;        // Source crop height (pixels)
+  radius?: number;       // Circle crop radius (display px)
+  innerRadius?: number;  // Radial trapezoid inner arc radius (display px)
+  outerRadius?: number;  // Radial trapezoid outer arc radius (display px)
+  sweepAngle?: number;   // Radial trapezoid angular sweep (degrees)
+}
+
 // Asset Placements
 export interface ImageNode extends ElementNode {
   type: "image";
   assetId: string;
   width?: number;
   height?: number;
+  crop?: ImageCrop;
 }
 
 export interface SvgAssetNode extends ElementNode {
@@ -224,6 +239,7 @@ export interface SvgAssetNode extends ElementNode {
   assetId: string;
   width?: number;
   height?: number;
+  crop?: ImageCrop;
 }
 
 export interface TabNode extends ElementNode {
