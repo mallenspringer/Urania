@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { useProjectStore } from "../../features/project/projectStore";
 import { useSelectionStore } from "../../features/selection/selectionStore";
 import { useViewStore } from "../../features/project/viewStore";
+import { useToolStore } from "../../features/tools/toolStore";
+import { resetImageNodeCrop } from "../../features/tools/imageTool";
 import { findNodeInTree, updateNodeInTree } from "../utils/geometry";
 import { getUnitSymbol, formatUnitValue, toPixels, fromPixels, type Unit } from "../utils/unitConversion";
 import { UpdateNodeCommand, DeleteMultipleNodesCommand, UpdateMultipleNodesCommand } from "../../features/project/commands";
@@ -28,6 +30,7 @@ import {
   Bookmark,
   Layers,
   Grid,
+  Crop,
 } from "lucide-react";
 
 // Deep merge helper to apply nested object patches safely
@@ -284,8 +287,226 @@ export function ScrubbableRawField({
 }
 
 
+interface ImageCropSectionProps {
+  activeNode: any;
+  isCropping: boolean;
+  hasCrop: boolean;
+  unitSymbol: string;
+  activeUnit: any;
+  handleStartEdit: () => void;
+  handleTransientEdit: (patch: any) => void;
+  handleCommitEdit: (patch: any) => void;
+  commitImmediateField: (patch: any) => void;
+  setCroppingImageNodeId: (id: string | null) => void;
+  resetImageNodeCrop: (node: any) => void;
+}
 
+function ImageCropSection({
+  activeNode,
+  isCropping,
+  hasCrop,
+  unitSymbol,
+  activeUnit,
+  handleStartEdit,
+  handleTransientEdit,
+  handleCommitEdit,
+  commitImmediateField,
+  setCroppingImageNodeId,
+  resetImageNodeCrop,
+}: ImageCropSectionProps) {
+  return (
+    <div className="sidebar-section">
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+        <h3 className="section-title" style={{ margin: 0 }}>
+          <Crop size={14} />
+          Image Asset &amp; Crop
+        </h3>
+      </div>
 
+      <div className="info-card" style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+        <div style={{ display: "flex", gap: "8px" }}>
+          <button
+            id="image-crop-toggle-btn"
+            onClick={() => setCroppingImageNodeId(isCropping ? null : activeNode.id)}
+            style={{
+              flex: 1,
+              backgroundColor: isCropping ? "#4f46e5" : "#6366f1",
+              color: "#ffffff",
+              border: "none",
+              borderRadius: "6px",
+              padding: "8px 12px",
+              fontSize: "12px",
+              fontWeight: 600,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "6px",
+            }}
+          >
+            <Crop size={14} />
+            {isCropping ? "Done Cropping" : "Crop Image"}
+          </button>
+          {hasCrop && (
+            <button
+              id="image-crop-reset-btn"
+              onClick={() => resetImageNodeCrop(activeNode)}
+              style={{
+                backgroundColor: "rgba(255, 255, 255, 0.05)",
+                color: "#cbd5e1",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                borderRadius: "6px",
+                padding: "8px 12px",
+                fontSize: "12px",
+                cursor: "pointer",
+              }}
+            >
+              Reset Crop
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px", marginTop: "4px" }}>
+          <div>
+            <label style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600 }}>Crop Mask Shape</label>
+            <select
+              id="image-crop-shape-select"
+              value={activeNode.crop?.shape || "rectangle"}
+              onChange={(e) => {
+                const newShape = e.target.value as any;
+                const currentCrop = activeNode.crop || { x: 0, y: 0, width: activeNode.width || 100, height: activeNode.height || 100 };
+                commitImmediateField({
+                  crop: {
+                    ...currentCrop,
+                    shape: newShape,
+                    radius: newShape === "circle" ? Math.min(activeNode.width || 100, activeNode.height || 100) / 2 : currentCrop.radius,
+                    outerRadius: newShape === "radialTrapezoid" ? Math.max(activeNode.width || 100, activeNode.height || 100) / 2 : currentCrop.outerRadius,
+                    innerRadius: newShape === "radialTrapezoid" ? Math.max(0, (activeNode.height || 100) * 0.2) : currentCrop.innerRadius,
+                    sweepAngle: newShape === "radialTrapezoid" ? 60 : currentCrop.sweepAngle,
+                  },
+                });
+              }}
+              style={{
+                backgroundColor: "#0b0c0f",
+                border: "1px solid #232530",
+                borderRadius: "6px",
+                color: "#f8fafc",
+                padding: "6px",
+                fontSize: "12px",
+                width: "100%",
+                marginTop: "4px",
+              }}
+            >
+              <option value="rectangle">Rectangle (Standard Box)</option>
+              <option value="circle">Circle Cutout</option>
+              <option value="radialTrapezoid">Radial Trapezoid (Annular Sector)</option>
+            </select>
+          </div>
+
+          {activeNode.crop?.shape === "circle" && (
+            <ScrubbableNumberField
+              id="crop-circle-radius"
+              label="Circle Radius"
+              unitSymbol={unitSymbol}
+              pixelValue={activeNode.crop?.radius || Math.min(activeNode.width || 100, activeNode.height || 100) / 2}
+              activeUnit={activeUnit}
+              minPx={5}
+              onStartEdit={handleStartEdit}
+              onChange={(px: number) => handleTransientEdit({ crop: { ...activeNode.crop, radius: px } })}
+              onCommit={(px: number) => handleCommitEdit({ crop: { ...activeNode.crop, radius: px } })}
+            />
+          )}
+
+          {activeNode.crop?.shape === "radialTrapezoid" && (
+            <>
+              <div className="control-double-row">
+                <ScrubbableNumberField
+                  id="crop-inner-radius"
+                  label="Inner Radius"
+                  unitSymbol={unitSymbol}
+                  pixelValue={activeNode.crop?.innerRadius || 0}
+                  activeUnit={activeUnit}
+                  minPx={0}
+                  onStartEdit={handleStartEdit}
+                  onChange={(px: number) => handleTransientEdit({ crop: { ...activeNode.crop, innerRadius: px } })}
+                  onCommit={(px: number) => handleCommitEdit({ crop: { ...activeNode.crop, innerRadius: px } })}
+                />
+                <ScrubbableNumberField
+                  id="crop-outer-radius"
+                  label="Outer Radius"
+                  unitSymbol={unitSymbol}
+                  pixelValue={activeNode.crop?.outerRadius || Math.max(activeNode.width || 100, activeNode.height || 100) / 2}
+                  activeUnit={activeUnit}
+                  minPx={5}
+                  onStartEdit={handleStartEdit}
+                  onChange={(px: number) => handleTransientEdit({ crop: { ...activeNode.crop, outerRadius: px } })}
+                  onCommit={(px: number) => handleCommitEdit({ crop: { ...activeNode.crop, outerRadius: px } })}
+                />
+              </div>
+              <ScrubbableRawField
+                id="crop-sweep-angle"
+                label="Sweep Angle (deg)"
+                value={activeNode.crop?.sweepAngle || 60}
+                min={5}
+                max={360}
+                step={1}
+                onStartEdit={handleStartEdit}
+                onChange={(val: number) => handleTransientEdit({ crop: { ...activeNode.crop, sweepAngle: val } })}
+                onCommit={(val: number) => handleCommitEdit({ crop: { ...activeNode.crop, sweepAngle: val } })}
+              />
+            </>
+          )}
+
+          {hasCrop && (
+            <>
+              <div style={{ fontSize: "11px", color: "#94a3b8", fontWeight: 600, marginTop: "4px" }}>Crop Source Bounds (px)</div>
+              <div className="control-double-row">
+                <ScrubbableRawField
+                  id="crop-source-x"
+                  label="Source X"
+                  value={Math.round(activeNode.crop?.x || 0)}
+                  min={0}
+                  onStartEdit={handleStartEdit}
+                  onChange={(val: number) => handleTransientEdit({ crop: { ...activeNode.crop, x: Math.max(0, val) } })}
+                  onCommit={(val: number) => handleCommitEdit({ crop: { ...activeNode.crop, x: Math.max(0, val) } })}
+                />
+                <ScrubbableRawField
+                  id="crop-source-y"
+                  label="Source Y"
+                  value={Math.round(activeNode.crop?.y || 0)}
+                  min={0}
+                  onStartEdit={handleStartEdit}
+                  onChange={(val: number) => handleTransientEdit({ crop: { ...activeNode.crop, y: Math.max(0, val) } })}
+                  onCommit={(val: number) => handleCommitEdit({ crop: { ...activeNode.crop, y: Math.max(0, val) } })}
+                />
+              </div>
+              <div className="control-double-row">
+                <ScrubbableRawField
+                  id="crop-source-width"
+                  label="Crop Width"
+                  value={Math.round(activeNode.crop?.width || 100)}
+                  min={10}
+                  onStartEdit={handleStartEdit}
+                  onChange={(val: number) => handleTransientEdit({ crop: { ...activeNode.crop, width: Math.max(10, val) } })}
+                  onCommit={(val: number) => handleCommitEdit({ crop: { ...activeNode.crop, width: Math.max(10, val) } })}
+                />
+                <ScrubbableRawField
+                  id="crop-source-height"
+                  label="Crop Height"
+                  value={Math.round(activeNode.crop?.height || 100)}
+                  min={10}
+                  onStartEdit={handleStartEdit}
+                  onChange={(val: number) => handleTransientEdit({ crop: { ...activeNode.crop, height: Math.max(10, val) } })}
+                  onCommit={(val: number) => handleCommitEdit({ crop: { ...activeNode.crop, height: Math.max(10, val) } })}
+                />
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 
 
@@ -297,6 +518,8 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
   const { project, setProject, executeCommand, updateMetadata, updateSettings } = useProjectStore();
   const { activeItem, selectedItems } = useSelectionStore();
   const isRightSidebarOpen = useViewStore((state) => state.isRightSidebarOpen);
+  const croppingImageNodeId = useToolStore((state) => state.croppingImageNodeId);
+  const setCroppingImageNodeId = useToolStore((state) => state.setCroppingImageNodeId);
 
   const gridLayer = useViewStore((s) => s.gridLayer);
   const gridMode = useViewStore((s) => s.gridMode);
@@ -1912,6 +2135,23 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
             </div>
           </div>
         </div>
+      )}
+
+      {/* Image Asset & Crop parameters */}
+      {(activeNode.type === "image" || activeNode.type === "svgAsset") && (
+        <ImageCropSection
+          activeNode={activeNode as any}
+          isCropping={croppingImageNodeId === activeNode.id}
+          hasCrop={!!(activeNode as any).crop}
+          unitSymbol={unitSymbol}
+          activeUnit={activeUnit}
+          handleStartEdit={handleStartEdit}
+          handleTransientEdit={handleTransientEdit}
+          handleCommitEdit={handleCommitEdit}
+          commitImmediateField={commitImmediateField}
+          setCroppingImageNodeId={setCroppingImageNodeId}
+          resetImageNodeCrop={resetImageNodeCrop}
+        />
       )}
 
       {/* Curve parameters */}

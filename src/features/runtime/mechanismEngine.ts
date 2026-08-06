@@ -376,6 +376,7 @@ function resolveNode(
     case "image": {
       const img = node as ImageNode;
       renderData.assetId = img.assetId;
+      if (img.crop) renderData.crop = img.crop;
       const w = img.width || 100;
       const h = img.height || 100;
       bounds = { x: -w / 2, y: -h / 2, width: w, height: h };
@@ -384,6 +385,7 @@ function resolveNode(
     case "svgAsset": {
       const svg = node as SvgAssetNode;
       renderData.assetId = svg.assetId;
+      if (svg.crop) renderData.crop = svg.crop;
       const w = svg.width || 100;
       const h = svg.height || 100;
       bounds = { x: -w / 2, y: -h / 2, width: w, height: h };

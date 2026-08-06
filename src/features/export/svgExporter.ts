@@ -359,7 +359,50 @@ function renderNodeToSVG(
       const w = node.bounds?.width || 100;
       const h = node.bounds?.height || 100;
       const hrefStr = embedAssets ? asset.embeddedData : `assets/${asset.id}.${asset.type}`;
-      return `<image href="${hrefStr}" x="-${w / 2}" y="-${h / 2}" width="${w}" height="${h}" ${transformAttr} />`;
+      const crop = node.renderData.crop;
+
+      const imgTag = (crop && crop.width > 0 && crop.height > 0)
+        ? `<svg x="-${w / 2}" y="-${h / 2}" width="${w}" height="${h}" viewBox="${crop.x} ${crop.y} ${crop.width} ${crop.height}" preserveAspectRatio="none" ${transformAttr}><image href="${hrefStr}" width="100%" height="100%" /></svg>`
+        : `<image href="${hrefStr}" x="-${w / 2}" y="-${h / 2}" width="${w}" height="${h}" ${transformAttr} />`;
+
+      if (crop?.shape === "circle") {
+        const circleR = crop.radius || Math.min(w, h) / 2;
+        const clipId = `crop-circle-${node.id}`;
+        return `<defs><clipPath id="${clipId}"><circle cx="0" cy="0" r="${circleR}" /></clipPath></defs><g clip-path="url(#${clipId})">${imgTag}</g>`;
+      }
+
+      if (crop?.shape === "radialTrapezoid") {
+        const sweepDeg = crop.sweepAngle || 60;
+        const halfSweep = (sweepDeg / 2) * (Math.PI / 180);
+        const outerR = crop.outerRadius || Math.max(w, h) / 2;
+        const innerR = Math.max(0, crop.innerRadius || 0);
+
+        const startAngleRad = -halfSweep - Math.PI / 2;
+        const endAngleRad = halfSweep - Math.PI / 2;
+
+        const x1 = outerR * Math.cos(startAngleRad);
+        const y1 = outerR * Math.sin(startAngleRad);
+        const x2 = outerR * Math.cos(endAngleRad);
+        const y2 = outerR * Math.sin(endAngleRad);
+
+        const largeArc = sweepDeg > 180 ? 1 : 0;
+        let pathD = `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${outerR} ${outerR} 0 ${largeArc} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+
+        if (innerR > 0) {
+          const ix2 = innerR * Math.cos(endAngleRad);
+          const iy2 = innerR * Math.sin(endAngleRad);
+          const ix1 = innerR * Math.cos(startAngleRad);
+          const iy1 = innerR * Math.sin(startAngleRad);
+          pathD += ` L ${ix2.toFixed(2)} ${iy2.toFixed(2)} A ${innerR} ${innerR} 0 ${largeArc} 0 ${ix1.toFixed(2)} ${iy1.toFixed(2)} Z`;
+        } else {
+          pathD += ` L 0 0 Z`;
+        }
+
+        const clipId = `crop-radial-${node.id}`;
+        return `<defs><clipPath id="${clipId}"><path d="${pathD}" /></clipPath></defs><g clip-path="url(#${clipId})">${imgTag}</g>`;
+      }
+
+      return imgTag;
     }
 
     case "tab": {

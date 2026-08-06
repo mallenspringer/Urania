@@ -109,3 +109,43 @@ export async function importImageAsset(file: File, activeRingId: string | null):
     reader.readAsDataURL(file);
   });
 }
+
+export function resetImageNodeCrop(rawNode: any): void {
+  if (!rawNode) return;
+
+  const store = useProjectStore.getState();
+  const origSnapshot = JSON.parse(JSON.stringify(rawNode));
+  const updatedNode = JSON.parse(JSON.stringify(rawNode));
+
+  const crop = rawNode.crop;
+  delete updatedNode.crop;
+
+  if (crop && crop.width > 0 && crop.height > 0) {
+    const scaleX = (rawNode.width || 100) / crop.width;
+    const scaleY = (rawNode.height || 100) / crop.height;
+
+    // Estimate uncropped natural dimensions from current crop
+    const naturalW = crop.x + crop.width;
+    const naturalH = crop.y + crop.height;
+
+    const fullWidth = naturalW * scaleX;
+    const fullHeight = naturalH * scaleY;
+
+    const localShiftX = (naturalW / 2 - crop.x - crop.width / 2) * scaleX;
+    const localShiftY = (naturalH / 2 - crop.y - crop.height / 2) * scaleY;
+
+    const rad = ((rawNode.transform?.rotation || 0) * Math.PI) / 180;
+    const worldShiftX = localShiftX * Math.cos(rad) - localShiftY * Math.sin(rad);
+    const worldShiftY = localShiftX * Math.sin(rad) + localShiftY * Math.cos(rad);
+
+    updatedNode.width = fullWidth;
+    updatedNode.height = fullHeight;
+    if (updatedNode.transform) {
+      updatedNode.transform.x = (rawNode.transform?.x || 0) + worldShiftX;
+      updatedNode.transform.y = (rawNode.transform?.y || 0) + worldShiftY;
+    }
+  }
+
+  store.executeCommand(new UpdateNodeCommand(rawNode.id, origSnapshot, updatedNode));
+  useToolStore.getState().setCroppingImageNodeId(null);
+}
