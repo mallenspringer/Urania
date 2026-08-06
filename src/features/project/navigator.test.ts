@@ -63,9 +63,9 @@ describe("Navigator Tree & Node Lock/Visibility Hierarchy Operations", () => {
     const rings = project.mechanism.children || [];
     expect(rings).toHaveLength(1);
     expect(rings[0].children).toHaveLength(1);
-    expect(rings[0].children[0].id).toBe("sector-nav-1");
-    expect((rings[0].children[0] as SectorNode).children).toHaveLength(1);
-    expect((rings[0].children[0] as SectorNode).children![0].id).toBe("rect-nav-1");
+    expect(rings[0].children![0].id).toBe("sector-nav-1");
+    expect((rings[0].children![0] as SectorNode).children).toHaveLength(1);
+    expect((rings[0].children![0] as SectorNode).children![0].id).toBe("rect-nav-1");
   });
 
   it("should toggle node lock and visibility states correctly via commands", () => {
@@ -145,19 +145,19 @@ describe("Navigator Tree & Node Lock/Visibility Hierarchy Operations", () => {
     useProjectStore.getState().executeCommand(new CreateNodeCommand(ringId, elem1));
     useProjectStore.getState().executeCommand(new CreateNodeCommand(ringId, elem2));
 
-    let children = (useProjectStore.getState().project.mechanism.children || [])[0].children;
+    let children = (useProjectStore.getState().project.mechanism.children || [])[0].children!;
     expect(children[0].id).toBe("elem-1");
     expect(children[1].id).toBe("elem-2");
 
     // Move elem-1 to index 1
     useProjectStore.getState().executeCommand(new ReorderChildNodesCommand(ringId, 0, 1));
-    children = (useProjectStore.getState().project.mechanism.children || [])[0].children;
+    children = (useProjectStore.getState().project.mechanism.children || [])[0].children!;
     expect(children[0].id).toBe("elem-2");
     expect(children[1].id).toBe("elem-1");
 
     // Undo
     useProjectStore.getState().undo();
-    children = (useProjectStore.getState().project.mechanism.children || [])[0].children;
+    children = (useProjectStore.getState().project.mechanism.children || [])[0].children!;
     expect(children[0].id).toBe("elem-1");
     expect(children[1].id).toBe("elem-2");
   });

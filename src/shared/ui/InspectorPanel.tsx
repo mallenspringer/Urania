@@ -5,7 +5,7 @@ import { useViewStore } from "../../features/project/viewStore";
 import { useToolStore } from "../../features/tools/toolStore";
 import { resetImageNodeCrop } from "../../features/tools/imageTool";
 import { findNodeInTree, updateNodeInTree } from "../utils/geometry";
-import { getUnitSymbol, formatUnitValue, toPixels, fromPixels, type Unit } from "../utils/unitConversion";
+import { getUnitSymbol, formatUnitValue, toPixels, type Unit } from "../utils/unitConversion";
 import { UpdateNodeCommand, DeleteMultipleNodesCommand, UpdateMultipleNodesCommand } from "../../features/project/commands";
 import { calculateSymmetryGroupUpdates, findSymmetryGroupMembers, computeSymmetryOffsets } from "../utils/symmetryHelper";
 import {
@@ -536,7 +536,7 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
   const toggleSliceGuides = useViewStore((s) => s.toggleSliceGuides);
   const toggleCircularGuides = useViewStore((s) => s.toggleCircularGuides);
 
-  const activeNode = activeItem ? findNodeInTree(project.mechanism, activeItem.id) : null;
+  const activeNode: any = activeItem ? findNodeInTree(project.mechanism, activeItem.id) : null;
   const activeUnit: Unit = project.settings.units || "pixels";
   const unitSymbol = getUnitSymbol(activeUnit);
   const stepVal = activeUnit === "pixels" ? 1 : activeUnit === "inches" ? 0.01 : 0.1;
@@ -576,7 +576,6 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
 
   // 1. NO SELECTION: Render complete Project & Canvas Settings Dashboard
   if (selectedItems.length === 0) {
-    const viewStore = useViewStore.getState();
     return (
       <aside className={`inspector-panel ${isRightSidebarOpen ? "" : "collapsed"}`} id="inspector-project-settings">
         <div className="sidebar-section">

@@ -1,7 +1,8 @@
 import type { Asset, ImageNode } from "../../shared/types/project";
 import { useProjectStore } from "../project/projectStore";
 import { useSelectionStore } from "../selection/selectionStore";
-import { CreateNodeCommand } from "../project/commands";
+import { useToolStore } from "./toolStore";
+import { CreateNodeCommand, UpdateNodeCommand } from "../project/commands";
 
 export async function importImageAsset(file: File, activeRingId: string | null): Promise<void> {
   const store = useProjectStore.getState();

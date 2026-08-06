@@ -15,11 +15,15 @@ describe("Select Tool - Ring-Level Marquee Selection", () => {
 
   const createContext = (previewData: any): ToolContext => ({
     project: useProjectStore.getState().project,
-    activeToolId: "select",
-    isToolLocked: false,
+    zoom: 1,
+    pan: { x: 0, y: 0 },
+    stageWidth: 800,
+    stageHeight: 600,
+    activeRingId: null,
+    pointerPos: { x: 0, y: 0 },
+    startPos: { x: 0, y: 0 },
     isShift: false,
     isAlt: false,
-    isCtrl: false,
     currentPreviewData: previewData,
     updatePreview: () => {},
     executeCommand: (cmd) => useProjectStore.getState().executeCommand(cmd),

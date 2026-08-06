@@ -183,7 +183,7 @@ export const selectTool: Tool = {
       // Check if clicked an auto-generated grab tab
       const hitTabRingId = findHitTab(pointer, context.project);
       if (hitTabRingId) {
-        const targetRing = findNodeInTree(context.project.mechanism, hitTabRingId);
+        const targetRing: any = findNodeInTree(context.project.mechanism, hitTabRingId);
         if (targetRing) {
           context.updatePreview({
             isDraggingTab: true,
@@ -303,7 +303,7 @@ export const selectTool: Tool = {
         if (hit.type === "tab") {
           const nodeObj = findNodeInTree(context.project.mechanism, hit.id) as any;
           const targetRingId = nodeObj.targetRingId || findParentNode(context.project.mechanism, hit.id)?.id;
-          const targetRing = targetRingId ? findNodeInTree(context.project.mechanism, targetRingId) : null;
+          const targetRing: any = targetRingId ? findNodeInTree(context.project.mechanism, targetRingId) : null;
           
           context.updatePreview({
             isDraggingTab: true,
@@ -318,7 +318,7 @@ export const selectTool: Tool = {
         } else if (hit.type === "ring" || hit.type === "discTab") {
           // Grabbing either a ring disc or a disc-attached tab allows direct rotation of the ring
           const targetRingId = hit.type === "ring" ? hit.id : findRingForNode(context.project, hit.id);
-          const targetRing = targetRingId ? findNodeInTree(context.project.mechanism, targetRingId) : null;
+          const targetRing: any = targetRingId ? findNodeInTree(context.project.mechanism, targetRingId) : null;
           const startPointerAngle = (Math.atan2(pointer.y, pointer.x) * 180) / Math.PI;
 
           context.updatePreview({
@@ -332,17 +332,19 @@ export const selectTool: Tool = {
             y1: pointer.y,
           });
         } else if (hit.type !== "sector") {
-          const nodeObj = findNodeInTree(context.project.mechanism, hit.id);
-          context.updatePreview({
-            isDraggingNode: true,
-            nodeId: hit.id,
-            nodeType: hit.type,
-            originalNode: JSON.parse(JSON.stringify(nodeObj)),
-            x1: pointer.x,
-            y1: pointer.y,
-            startNodeX: nodeObj.transform.x,
-            startNodeY: nodeObj.transform.y,
-          });
+          const nodeObj: any = findNodeInTree(context.project.mechanism, hit.id);
+          if (nodeObj) {
+            context.updatePreview({
+              isDraggingNode: true,
+              nodeId: hit.id,
+              nodeType: hit.type,
+              originalNode: JSON.parse(JSON.stringify(nodeObj)),
+              x1: pointer.x,
+              y1: pointer.y,
+              startNodeX: nodeObj.transform.x,
+              startNodeY: nodeObj.transform.y,
+            });
+          }
         } else {
           context.updatePreview({
             isClickOnly: true,
@@ -367,7 +369,7 @@ export const selectTool: Tool = {
   },
 
   onMouseMove(_e, context) {
-    const preview = context.currentPreviewData;
+    const preview: any = context.currentPreviewData;
     if (!preview) return;
 
     const pointer = context.pointerPos;
@@ -478,7 +480,7 @@ export const selectTool: Tool = {
         const cwRotation = 360 - ccwRotation;
 
         const updatedMechanism = JSON.parse(JSON.stringify(context.project.mechanism));
-        const updatedRing = findNodeInTree(updatedMechanism, targetRingId);
+        const updatedRing: any = findNodeInTree(updatedMechanism, targetRingId);
         if (updatedRing) {
           updatedRing.rotation = cwRotation;
           useProjectStore.getState().setProject({
@@ -496,7 +498,7 @@ export const selectTool: Tool = {
         if (newRotation < 0) newRotation += 360;
 
         const updatedMechanism = JSON.parse(JSON.stringify(context.project.mechanism));
-        const updatedRing = findNodeInTree(updatedMechanism, targetRingId);
+        const updatedRing: any = findNodeInTree(updatedMechanism, targetRingId);
         if (updatedRing) {
           updatedRing.rotation = Math.round(newRotation * 10) / 10;
           useProjectStore.getState().setProject({
@@ -542,7 +544,7 @@ export const selectTool: Tool = {
 
         // Perform resize based on shape type and transform mode
         const updatedMechanism = JSON.parse(JSON.stringify(context.project.mechanism));
-        const updatedNode = findNodeInTree(updatedMechanism, preview.nodeId);
+        const updatedNode: any = findNodeInTree(updatedMechanism, preview.nodeId);
 
         if (updatedNode) {
           const handle = preview.handle;
@@ -868,7 +870,7 @@ export const selectTool: Tool = {
   },
 
   onMouseUp(_e, context) {
-    const preview = context.currentPreviewData;
+    const preview = context.currentPreviewData as any;
     if (!preview) return;
 
     context.updatePreview(null); // Clear preview
@@ -908,19 +910,19 @@ export const selectTool: Tool = {
         });
 
         if (touchedRingNodes.length > 0) {
-          const topmostTouched = visibleRings.slice().reverse().find((vr) => touchedRingNodes.some((tr) => tr.id === vr.id));
-          if (topmostTouched) {
-            selectStore.setSelection([{ id: topmostTouched.id, type: "ring" }]);
-            return;
+          const touchedIds = new Set(touchedRingNodes.map((n) => n.id));
+          const topRing = [...visibleRings].reverse().find((r) => touchedIds.has(r.id));
+          if (topRing) {
+            selectStore.selectItem(topRing.id, "ring", context.isShift);
           }
-        }
-
-        // Fallback: Pick top-most visible ring in project
-        if (visibleRings.length > 0) {
-          const topmost = visibleRings[visibleRings.length - 1];
-          selectStore.setSelection([{ id: topmost.id, type: "ring" }]);
         } else {
-          selectStore.clearSelection();
+          // Fallback: Pick top-most visible ring in project
+          if (visibleRings.length > 0) {
+            const topmost = visibleRings[visibleRings.length - 1];
+            selectStore.setSelection([{ id: topmost.id, type: "ring" }]);
+          } else {
+            selectStore.clearSelection();
+          }
         }
         return;
       }
@@ -951,7 +953,7 @@ export const selectTool: Tool = {
           const selectedNode = findNodeInTree(context.project.mechanism, m.id);
           const violates = filtered.some((f) => {
             const fNode = findNodeInTree(context.project.mechanism, f.id);
-            return isDescendantOf(selectedNode, f.id) || isDescendantOf(fNode, m.id);
+            return (selectedNode && isDescendantOf(selectedNode, f.id)) || (fNode && isDescendantOf(fNode, m.id));
           });
           if (!violates) {
             filtered.push(m);
@@ -962,11 +964,11 @@ export const selectTool: Tool = {
     } else if (preview.isDraggingNode) {
       // Finished dragging the node!
       const currentProject = useProjectStore.getState().project;
-      const finalNode = findNodeInTree(currentProject.mechanism, preview.nodeId);
+      const finalNode: any = findNodeInTree(currentProject.mechanism, preview.nodeId);
 
       // Rollback to original position transiently so we can execute the command
       const originalMechanism = JSON.parse(JSON.stringify(currentProject.mechanism));
-      const originalNodeInTree = findNodeInTree(originalMechanism, preview.nodeId);
+      const originalNodeInTree: any = findNodeInTree(originalMechanism, preview.nodeId);
       if (originalNodeInTree) {
         originalNodeInTree.transform.x = preview.originalNode.transform.x;
         originalNodeInTree.transform.y = preview.originalNode.transform.y;
@@ -976,7 +978,7 @@ export const selectTool: Tool = {
         });
       }
 
-      if (preview.originalNode.symmetryGroupId) {
+      if (finalNode && preview.originalNode.symmetryGroupId) {
         const updates = calculateSymmetryGroupUpdates(originalMechanism, preview.originalNode, {
           transform: { x: finalNode.transform.x, y: finalNode.transform.y },
         });
@@ -988,7 +990,7 @@ export const selectTool: Tool = {
           updatedNode.transform.y = finalNode.transform.y;
           context.executeCommand(new UpdateNodeCommand(preview.nodeId, preview.originalNode, updatedNode));
         }
-      } else {
+      } else if (finalNode) {
         const updatedNode = JSON.parse(JSON.stringify(preview.originalNode));
         updatedNode.transform.x = finalNode.transform.x;
         updatedNode.transform.y = finalNode.transform.y;
@@ -999,11 +1001,11 @@ export const selectTool: Tool = {
       const targetRingId = preview.targetRingId;
       if (targetRingId) {
         const currentProject = useProjectStore.getState().project;
-        const finalRing = findNodeInTree(currentProject.mechanism, targetRingId);
+        const finalRing: any = findNodeInTree(currentProject.mechanism, targetRingId);
 
         // Rollback the ring's rotation to start rotation transiently
         const originalMechanism = JSON.parse(JSON.stringify(currentProject.mechanism));
-        const originalRingInTree = findNodeInTree(originalMechanism, targetRingId);
+        const originalRingInTree: any = findNodeInTree(originalMechanism, targetRingId);
         if (originalRingInTree) {
           originalRingInTree.rotation = preview.startRingRotation;
           useProjectStore.getState().setProject({
@@ -1015,20 +1017,22 @@ export const selectTool: Tool = {
         // Prepare snapshots for UpdateNodeCommand if rotation actually changed
         if (finalRing && Math.abs((finalRing.rotation || 0) - preview.startRingRotation) > 0.01) {
           const startRingNode = findNodeInTree(originalMechanism, targetRingId);
-          const finalRingNode = JSON.parse(JSON.stringify(startRingNode));
-          finalRingNode.rotation = finalRing.rotation;
+          if (startRingNode) {
+            const finalRingNode = JSON.parse(JSON.stringify(startRingNode));
+            finalRingNode.rotation = finalRing.rotation;
 
-          context.executeCommand(new UpdateNodeCommand(targetRingId, startRingNode, finalRingNode));
+            context.executeCommand(new UpdateNodeCommand(targetRingId, startRingNode, finalRingNode));
+          }
         }
       }
     } else if (preview.isResizing) {
       // Finished resizing!
       const currentProject = useProjectStore.getState().project;
-      const finalNode = findNodeInTree(currentProject.mechanism, preview.nodeId);
+      const finalNode: any = findNodeInTree(currentProject.mechanism, preview.nodeId);
 
       // Rollback
       const originalMechanism = JSON.parse(JSON.stringify(currentProject.mechanism));
-      const originalNodeInTree = findNodeInTree(originalMechanism, preview.nodeId);
+      const originalNodeInTree: any = findNodeInTree(originalMechanism, preview.nodeId);
       if (originalNodeInTree) {
         Object.assign(originalNodeInTree, JSON.parse(JSON.stringify(preview.originalNode)));
         useProjectStore.getState().setProject({
@@ -1037,15 +1041,15 @@ export const selectTool: Tool = {
         });
       }
 
-      if (preview.originalNode.symmetryGroupId) {
+      if (finalNode && preview.originalNode.symmetryGroupId) {
         const patch = JSON.parse(JSON.stringify(finalNode));
         const updates = calculateSymmetryGroupUpdates(originalMechanism, preview.originalNode, patch);
         if (updates.length > 0) {
           context.executeCommand(new UpdateMultipleNodesCommand(updates));
-        } else {
+        } else if (finalNode) {
           context.executeCommand(new UpdateNodeCommand(preview.nodeId, preview.originalNode, finalNode));
         }
-      } else {
+      } else if (finalNode) {
         context.executeCommand(new UpdateNodeCommand(preview.nodeId, preview.originalNode, finalNode));
       }
     }

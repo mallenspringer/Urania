@@ -1,4 +1,4 @@
-import React from "react";
+
 import { Group, Shape as KonvaShape } from "react-konva";
 import type { Tool, ToolContext } from "./toolTypes";
 import { resolveProject } from "../runtime/mechanismEngine";
@@ -193,7 +193,7 @@ export const discTabTool: Tool = {
     if (!outerRadius) return null;
 
     const ring = getActiveRingNode(context);
-    const ringData = ring ? ring.renderData : { outerRadius };
+    const ringData = (ring ? ring.renderData : { outerRadius }) as any;
 
     const sym = useToolStore.getState().symmetryCount || 1;
     const step = 360 / sym;

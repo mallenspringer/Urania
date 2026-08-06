@@ -28,7 +28,6 @@ import {
   Star,
   Minus,
   Spline,
-  Activity,
   Image as ImageIcon,
   Bookmark,
   Crop,
@@ -343,7 +342,7 @@ export const CanvasWorkspace: React.FC = () => {
 
   useEffect(() => {
     if (editingTextNodeId) {
-      const node = findNodeInTree(project.mechanism, editingTextNodeId);
+      const node: any = findNodeInTree(project.mechanism, editingTextNodeId);
       if (node) {
         const val = node.type === "window" && node.shape ? (node.shape.content || "") : (node.content || "");
         setLocalTextValue(val);
@@ -366,7 +365,7 @@ export const CanvasWorkspace: React.FC = () => {
     setLocalTextValue(val);
 
     const updatedMechanism = JSON.parse(JSON.stringify(project.mechanism));
-    const node = findNodeInTree(updatedMechanism, editingTextNodeId!);
+    const node: any = findNodeInTree(updatedMechanism, editingTextNodeId!);
     if (node) {
       if (node.type === "window" && node.shape) {
         node.shape.content = val;
@@ -388,7 +387,7 @@ export const CanvasWorkspace: React.FC = () => {
 
     // Rollback transient change so command can execute cleanly
     const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
-    const node = findNodeInTree(rolledBackMechanism, editingTextNodeId);
+    const node: any = findNodeInTree(rolledBackMechanism, editingTextNodeId);
     if (node) {
       if (node.type === "window" && node.shape) {
         node.shape.content = origVal;
@@ -403,14 +402,16 @@ export const CanvasWorkspace: React.FC = () => {
 
     if (finalVal !== origVal) {
       const originalNode = findNodeInTree(project.mechanism, editingTextNodeId);
-      const updatedNode = JSON.parse(JSON.stringify(originalNode));
-      if (updatedNode.type === "window" && updatedNode.shape) {
-        updatedNode.shape.content = finalVal;
-      } else {
-        updatedNode.content = finalVal;
-      }
+      if (originalNode) {
+        const updatedNode = JSON.parse(JSON.stringify(originalNode));
+        if (updatedNode.type === "window" && updatedNode.shape) {
+          updatedNode.shape.content = finalVal;
+        } else {
+          updatedNode.content = finalVal;
+        }
 
-      executeCommand(new UpdateNodeCommand(editingTextNodeId, originalNode, updatedNode));
+        executeCommand(new UpdateNodeCommand(editingTextNodeId, originalNode, updatedNode));
+      }
     }
 
     setEditingTextNodeId(null);
@@ -423,7 +424,7 @@ export const CanvasWorkspace: React.FC = () => {
     } else if (e.key === "Escape") {
       e.preventDefault();
       const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
-      const node = findNodeInTree(rolledBackMechanism, editingTextNodeId!);
+      const node: any = findNodeInTree(rolledBackMechanism, editingTextNodeId!);
       if (node) {
         node.content = originalTextRef.current;
         setProject({
@@ -549,7 +550,7 @@ export const CanvasWorkspace: React.FC = () => {
         } else if (editingTextNodeId) {
           // Rollback transient changes
           const rolledBackMechanism = JSON.parse(JSON.stringify(project.mechanism));
-          const node = findNodeInTree(rolledBackMechanism, editingTextNodeId);
+          const node: any = findNodeInTree(rolledBackMechanism, editingTextNodeId);
           if (node) {
             node.content = originalTextRef.current;
             setProject({
@@ -1584,7 +1585,7 @@ export const CanvasWorkspace: React.FC = () => {
             >
               Done
             </button>
-            {rawNode?.crop && (
+            {(rawNode as any)?.crop && (
               <button
                 onClick={() => {
                   if (rawNode) resetImageNodeCrop(rawNode);
