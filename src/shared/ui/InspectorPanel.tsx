@@ -2817,6 +2817,42 @@ export const InspectorPanel: React.FC<InspectorPanelProps> = ({ onDeleteRing }) 
         </div>
       )}
 
+      {/* Image Machine Role Control */}
+      {(activeNode.type === "image" || activeNode.type === "svgAsset") && (
+        <div className="sidebar-section">
+          <h3 className="section-title">
+            <Printer size={14} />
+            Machine Action / Role
+          </h3>
+          <div className="info-card">
+            <label>Machine Role for Physical Export</label>
+            <select
+              id="image-machine-role-select"
+              value={activeNode.export?.machineRole || "print"}
+              onChange={(e) =>
+                commitImmediateField({
+                  export: { ...(activeNode.export || { artwork: true, cut: false, fold: false }), machineRole: e.target.value as any },
+                })
+              }
+              style={{
+                backgroundColor: "#0b0c0f",
+                border: "1px solid #232530",
+                borderRadius: "6px",
+                color: "#f8fafc",
+                padding: "6px",
+                fontSize: "12px",
+                width: "100%",
+                marginTop: "4px",
+              }}
+            >
+              <option value="print">🎨 Print (Full Color Image)</option>
+              <option value="plot">✏️ Pen Plot / Draw Linework</option>
+              <option value="cut">✂️ Cut Perimeter Boundary Only</option>
+            </select>
+          </div>
+        </div>
+      )}
+
       {/* Vector Color Styling */}
       {activeNode.type !== "window" && (activeNode.style || activeNode.type === "ring" || activeNode.type === "sector") && (
         <div className="sidebar-section">

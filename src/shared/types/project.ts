@@ -89,6 +89,7 @@ export interface ExportFlags {
   artwork: boolean;
   cut: boolean;
   fold: boolean;
+  machineRole?: "print" | "plot" | "cut";
 }
 
 export interface ElementNode extends BaseNode {

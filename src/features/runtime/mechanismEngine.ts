@@ -377,8 +377,10 @@ function resolveNode(
       const img = node as ImageNode;
       renderData.assetId = img.assetId;
       if (img.crop) renderData.crop = img.crop;
-      const w = img.width || 100;
-      const h = img.height || 100;
+      const w = img.width || (img.bounds as any)?.width || 100;
+      const h = img.height || (img.bounds as any)?.height || 100;
+      renderData.width = w;
+      renderData.height = h;
       bounds = { x: -w / 2, y: -h / 2, width: w, height: h };
       break;
     }
@@ -386,8 +388,10 @@ function resolveNode(
       const svg = node as SvgAssetNode;
       renderData.assetId = svg.assetId;
       if (svg.crop) renderData.crop = svg.crop;
-      const w = svg.width || 100;
-      const h = svg.height || 100;
+      const w = svg.width || (svg.bounds as any)?.width || 100;
+      const h = svg.height || (svg.bounds as any)?.height || 100;
+      renderData.width = w;
+      renderData.height = h;
       bounds = { x: -w / 2, y: -h / 2, width: w, height: h };
       break;
     }
@@ -519,7 +523,7 @@ function resolveNode(
           visible,
           currentMaskIds,
           resolved,
-          ringContext
+          ring
         );
       }
     }
