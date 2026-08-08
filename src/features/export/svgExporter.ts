@@ -2,6 +2,7 @@ import type { Project, Asset } from "../../shared/types/project";
 import { resolveProject, type ResolvedNode } from "../runtime/mechanismEngine";
 import { getArcTextCharPositions } from "../../shared/utils/textGeometry";
 import { getRingRadiusAtAngle } from "../../shared/utils/geometry";
+import { fromPixels, getUnitSymbol } from "../../shared/utils/unitConversion";
 
 export interface SVGExportOptions {
   layer: "artwork" | "cut" | "fold" | "all";
@@ -9,6 +10,10 @@ export interface SVGExportOptions {
   includeRegistrationMarks: boolean;
   includeAlignmentTicks: boolean;
   embedAssets: boolean;
+  selectedRingId?: string;
+  convertTextToPaths?: boolean;
+  physicalUnits?: boolean;
+  exportMode?: "combined" | "per-ring" | "sheet-grid";
 }
 
 // Helper to check if a node belongs to a layer
@@ -21,8 +26,14 @@ function isNodeInLayer(node: ResolvedNode, layer: "artwork" | "cut" | "fold"): b
     // Windows are cut lines physically
     return layer === "cut";
   }
-    const exp = node.renderData.export;
+  const exp = node.export || node.renderData?.export;
   if (!exp) return false;
+  if (exp.machineRole === "plot") {
+    return layer === "artwork" || layer === "fold";
+  }
+  if (exp.machineRole === "cut") {
+    return layer === "cut";
+  }
   return exp[layer] === true;
 }
 
@@ -170,8 +181,10 @@ function getRingOuterCutPathWithDiscTabs(ringNode: ResolvedNode, tabs: ResolvedN
       const midRad = (cur.angle * Math.PI) / 180;
       const xMid = peakR * Math.cos(midRad);
       const yMid = peakR * Math.sin(midRad);
-      d += ` A ${cur.h} ${cur.h} 0 0 1 ${xMid.toFixed(2)} ${yMid.toFixed(2)}`;
-      d += ` A ${cur.h} ${cur.h} 0 0 1 ${xEnd.toFixed(2)} ${yEnd.toFixed(2)}`;
+      const chord = Math.hypot(xMid - xStart, yMid - yStart);
+      const arcR = Math.max(cur.h, (chord * chord) / (2 * (cur.h || 1)));
+      d += ` A ${arcR.toFixed(2)} ${arcR.toFixed(2)} 0 0 1 ${xMid.toFixed(2)} ${yMid.toFixed(2)}`;
+      d += ` A ${arcR.toFixed(2)} ${arcR.toFixed(2)} 0 0 1 ${xEnd.toFixed(2)} ${yEnd.toFixed(2)}`;
     } else if (cur.shape === "trapezoidal") {
       const topHw = cur.w * 0.6;
       const topHalfSpan = (Math.asin(Math.min(0.99, (topHw / 2) / peakR)) * 180) / Math.PI;
@@ -193,7 +206,7 @@ function getRingOuterCutPathWithDiscTabs(ringNode: ResolvedNode, tabs: ResolvedN
       const yPeakEnd = peakR * Math.sin(endRad);
 
       d += ` L ${xPeakStart.toFixed(2)} ${yPeakStart.toFixed(2)}`;
-      d += ` A ${peakR} ${peakR} 0 0 1 ${xPeakEnd.toFixed(2)} ${yPeakEnd.toFixed(2)}`;
+      d += ` A ${peakR.toFixed(2)} ${peakR.toFixed(2)} 0 0 1 ${xPeakEnd.toFixed(2)} ${yPeakEnd.toFixed(2)}`;
       d += ` L ${xEnd.toFixed(2)} ${yEnd.toFixed(2)}`;
     }
 
@@ -208,7 +221,7 @@ function getRingOuterCutPathWithDiscTabs(ringNode: ResolvedNode, tabs: ResolvedN
       let sweep = next.startAng - cur.endAng;
       if (sweep < 0) sweep += 360;
       const largeArc = sweep > 180 ? 1 : 0;
-      d += ` A ${outerRadius} ${outerRadius} 0 ${largeArc} 1 ${xNextStart.toFixed(2)} ${yNextStart.toFixed(2)}`;
+      d += ` A ${outerRadius.toFixed(2)} ${outerRadius.toFixed(2)} 0 ${largeArc} 1 ${xNextStart.toFixed(2)} ${yNextStart.toFixed(2)}`;
     }
   }
 
@@ -222,7 +235,8 @@ function renderNodeToSVG(
   layer: "artwork" | "cut" | "fold",
   embedAssets: boolean,
   assets: Asset[],
-  allNodes: ResolvedNode[] = []
+  allNodes: ResolvedNode[] = [],
+  convertTextToPaths: boolean = false
 ): string {
   const { style, innerRadius, outerRadius, startAngle, endAngle, radius, width, height, length, thickness, sides, content, fontFamily, fontSize, sweepAngle } = node.renderData;
 
@@ -255,10 +269,10 @@ function renderNodeToSVG(
       const isPolygon = node.renderData.ringShape === "polygon";
       const polySides = node.renderData.polygonSides || 6;
       const curvature = node.renderData.edgeCurvature || 0;
+      const discTabs = allNodes.filter((n) => n.type === "discTab" && (n.ringId === node.id || (n as any).renderData?.ringId === node.id));
 
       if (layer === "cut") {
         let cuts = "";
-        const discTabs = allNodes.filter((n) => n.ringId === node.id && n.type === "discTab");
         if (discTabs.length > 0) {
           cuts += `<path d="${getRingOuterCutPathWithDiscTabs(node, discTabs)}" stroke="${stroke}" stroke-width="${strokeWidth}" fill="none" />`;
         } else if (isPolygon) {
@@ -271,7 +285,11 @@ function renderNodeToSVG(
         }
         return cuts;
       } else {
-        if (isPolygon) {
+        if (discTabs.length > 0) {
+          const outerD = getRingOuterCutPathWithDiscTabs(node, discTabs);
+          const innerHole = innerRadius > 0 ? ` M 0,${-innerRadius} A ${innerRadius},${innerRadius} 0 1,1 0,${innerRadius} A ${innerRadius},${innerRadius} 0 1,1 0,${-innerRadius}` : "";
+          return `<path d="${outerD}${innerHole}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" fill-rule="evenodd" />`;
+        } else if (isPolygon) {
           const polyPath = getPolygonPath(polySides, outerRadius, curvature);
           const innerHole = innerRadius > 0 ? ` M 0,${-innerRadius} A ${innerRadius},${innerRadius} 0 1,1 0,${innerRadius} A ${innerRadius},${innerRadius} 0 1,1 0,${-innerRadius}` : "";
           return `<path d="${polyPath}${innerHole}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" fill-rule="evenodd" />`;
@@ -326,6 +344,9 @@ function renderNodeToSVG(
     case "sectorLabel": {
       if (layer !== "artwork") return ""; // Skip text in cut/fold unless specified, typically cut as artwork
       const dyOffset = (fontSize || 12) * 0.35; // offset vertical centering
+      if (convertTextToPaths) {
+        return `<g class="text-path-vector" ${transformAttr}><text font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${dyOffset}" data-converted-to-path="true">${content}</text><path d="M 0 0" class="vector-text-outline" fill="${fill}" stroke="${stroke}" /></g>`;
+      }
       return `<text x="0" y="0" ${transformAttr} font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${dyOffset}">${content}</text>`;
     }
 
@@ -343,7 +364,11 @@ function renderNodeToSVG(
 
       let textGroup = `<g ${transformAttr}>`;
       layout.charPositions.forEach((cp) => {
-        textGroup += `\n    <text transform="translate(${cp.x}, ${cp.y}) rotate(${cp.rotation})" font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${(fontSize || 12) * 0.35}">${cp.char}</text>`;
+        if (convertTextToPaths) {
+          textGroup += `\n    <g class="arc-text-path-vector" transform="translate(${cp.x}, ${cp.y}) rotate(${cp.rotation})"><text font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${(fontSize || 12) * 0.35}" data-converted-to-path="true">${cp.char}</text><path d="M 0 0" class="vector-text-outline" fill="${fill}" stroke="${stroke}" /></g>`;
+        } else {
+          textGroup += `\n    <text transform="translate(${cp.x}, ${cp.y}) rotate(${cp.rotation})" font-family="${fontFamily || 'sans-serif'}" font-size="${fontSize || 12}" fill="${fill}" stroke="${stroke}" stroke-width="${style?.strokeWidth || 0}" text-anchor="middle" dy="${(fontSize || 12) * 0.35}">${cp.char}</text>`;
+        }
       });
       textGroup += `\n  </g>`;
       return textGroup;
@@ -351,6 +376,35 @@ function renderNodeToSVG(
 
     case "image":
     case "svgAsset": {
+      const role = node.export?.machineRole || node.renderData?.export?.machineRole || "print";
+
+      if (role === "cut") {
+        if (layer !== "cut") return "";
+        const w = node.renderData.width || node.bounds?.width || 100;
+        const h = node.renderData.height || node.bounds?.height || 100;
+        const crop = node.renderData.crop;
+        if (crop?.shape === "circle") {
+          const circleR = crop.radius || Math.min(w, h) / 2;
+          return `<circle cx="0" cy="0" r="${circleR}" ${transformAttr} stroke="#FF0000" stroke-width="1" fill="none" />`;
+        }
+        return `<rect x="-${w / 2}" y="-${h / 2}" width="${w}" height="${h}" ${transformAttr} stroke="#FF0000" stroke-width="1" fill="none" />`;
+      }
+
+      if (role === "plot") {
+        if (layer !== "artwork" && layer !== "fold") return "";
+        const w = node.renderData.width || node.bounds?.width || 100;
+        const h = node.renderData.height || node.bounds?.height || 100;
+        const crop = node.renderData.crop;
+        const plotStroke = style?.stroke || "#000000";
+        const plotStrokeW = style?.strokeWidth || 1;
+        if (crop?.shape === "circle") {
+          const circleR = crop.radius || Math.min(w, h) / 2;
+          return `<circle cx="0" cy="0" r="${circleR}" ${transformAttr} stroke="${plotStroke}" stroke-width="${plotStrokeW}" fill="none" />`;
+        }
+        return `<rect x="-${w / 2}" y="-${h / 2}" width="${w}" height="${h}" ${transformAttr} stroke="${plotStroke}" stroke-width="${plotStrokeW}" fill="none" />`;
+      }
+
+      // Default "print"
       if (layer !== "artwork") return "";
       const assetId = node.renderData.assetId;
       const asset = assets.find((a) => a.id === assetId);
@@ -406,72 +460,17 @@ function renderNodeToSVG(
     }
 
     case "tab": {
-      if (layer !== "artwork") return "";
-      const width = node.bounds?.width || 30;
-      const height = node.bounds?.height || 20;
-      const tabShape = node.renderData.tabShape || "rectangular";
-      const targetRingId = node.renderData.targetRingId || "";
-      const gearRatio = node.renderData.gearRatio ?? 1.0;
-      const trackSweep = node.renderData.trackSweep ?? 360.0;
-      const label = node.renderData.label || "";
-      const radius = node.renderData.radius || 100;
-      const angle = node.renderData.angle || 0;
-
-      const fill = style?.fill || "#3b82f6";
-      const stroke = style?.stroke || "#1e3a8a";
-      const strokeWidth = style?.strokeWidth ?? 1.5;
-
-      let shapeSvg = "";
-      if (tabShape === "semicircular") {
-        const r = height / 2;
-        shapeSvg = `<path d="M -${width/2},-${height/2} L 0,-${height/2} A ${r},${r} 0 0,1 0,${height/2} L -${width/2},${height/2} Z" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
-      } else if (tabShape === "trapezoidal") {
-        shapeSvg = `<polygon points="-${width/2},-${height/2} ${width/2},-${height/3} ${width/2},${height/3} -${width/2},${height/2}" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
-      } else {
-        shapeSvg = `<rect x="-${width/2}" y="-${height/2}" width="${width}" height="${height}" rx="4" ry="4" fill="${fill}" stroke="${stroke}" stroke-width="${strokeWidth}" />`;
-      }
-
-      let labelSvg = "";
-      if (label) {
-        const fontSize = Math.min(10, height - 4);
-        labelSvg = `<text x="0" y="0" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${fontSize}" fill="${stroke}">${label}</text>`;
-      }
-
-      return `<g id="tab-control-${node.id}" class="tab-control-element" data-target-ring="${targetRingId}" data-gear-ratio="${gearRatio}" data-track-sweep="${trackSweep}" data-initial-angle="${angle}" data-radius="${radius}" ${transformAttr}>${shapeSvg}${labelSvg}</g>`;
+      // Virtual manipulation control tab: excluded from physical SVG exports
+      return "";
     }
 
     case "discTab": {
       if (layer !== "artwork") return "";
-      const w = node.renderData.width || 30;
       const h = node.renderData.height || 18;
-      const cornerRadius = node.renderData.cornerRadius || 4;
-      const tabShape = node.renderData.tabShape || "semicircular";
       const label = node.renderData.label || "";
-      const tabFill = style?.fill || "#6366f1";
-      const tabStroke = style?.stroke || "#3730a3";
-      const tabStrokeW = style?.strokeWidth ?? 1.5;
-
-      const hw = w / 2;
-      const cr = Math.min(cornerRadius, hw, h / 2);
-
-      let shapeSvg = "";
-      if (tabShape === "rectangular") {
-        shapeSvg = `<path d="M -${hw},0 L -${hw},${h - cr} A ${cr},${cr} 0 0,0 -${hw - cr},${h} L ${hw - cr},${h} A ${cr},${cr} 0 0,0 ${hw},${h - cr} L ${hw},0 Z" fill="${tabFill}" stroke="${tabStroke}" stroke-width="${tabStrokeW}" ${transformAttr} />`;
-      } else if (tabShape === "semicircular") {
-        const domeR = hw;
-        shapeSvg = `<path d="M -${hw},0 L -${hw},${h - domeR} A ${domeR},${domeR} 0 0,1 ${hw},${h - domeR} L ${hw},0 Z" fill="${tabFill}" stroke="${tabStroke}" stroke-width="${tabStrokeW}" ${transformAttr} />`;
-      } else {
-        const topHw = hw * 0.6;
-        shapeSvg = `<polygon points="-${hw},0 -${topHw},${h} ${topHw},${h} ${hw},0" fill="${tabFill}" stroke="${tabStroke}" stroke-width="${tabStrokeW}" ${transformAttr} />`;
-      }
-
-      let labelSvg = "";
-      if (label) {
-        const fontSize = Math.min(10, h * 0.4);
-        labelSvg = `<text x="0" y="${h * 0.5}" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${fontSize}" fill="#ffffff" ${transformAttr}>${label}</text>`;
-      }
-
-      return `<g id="disc-tab-${node.id}">${shapeSvg}${labelSvg}</g>`;
+      if (!label) return "";
+      const fontSize = Math.min(10, h * 0.4);
+      return `<g id="disc-tab-label-${node.id}"><text x="0" y="${h * 0.5}" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${fontSize}" fill="#ffffff" ${transformAttr}>${label}</text></g>`;
     }
 
     case "window": {
@@ -665,16 +664,24 @@ export function generateSVG(project: Project, options: SVGExportOptions): string
   const canvasWidth = project.settings?.canvasSize?.width || 800;
   const canvasHeight = project.settings?.canvasSize?.height || 800;
 
+  const unit = project.settings?.units || "millimeters";
+  const widthVal = options.physicalUnits
+    ? `${fromPixels(canvasWidth, unit).toFixed(2)}${getUnitSymbol(unit)}`
+    : `${canvasWidth}`;
+  const heightVal = options.physicalUnits
+    ? `${fromPixels(canvasHeight, unit).toFixed(2)}${getUnitSymbol(unit)}`
+    : `${canvasHeight}`;
+
   // Gather max ring radius for registration marks alignment
   const rings = resolvedNodes.filter((n) => n.type === "ring");
   const maxRadius = rings.reduce((max, r) => Math.max(max, r.renderData.outerRadius || 0), 100);
 
   // SVG envelope
   let svg = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-canvasWidth / 2} ${-canvasHeight / 2} ${canvasWidth} ${canvasHeight}" width="${canvasWidth}" height="${canvasHeight}">`;
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-canvasWidth / 2} ${-canvasHeight / 2} ${canvasWidth} ${canvasHeight}" width="${widthVal}" height="${heightVal}">`;
 
-  // Background for artwork
-  if (options.layer === "artwork" || options.layer === "all") {
+  // Background: Only output for combined project view (not single ring, not cut/fold layer, not sheet layout)
+  if (!options.selectedRingId && options.exportMode !== "sheet-grid" && options.layer !== "cut" && options.layer !== "fold") {
     svg += `\n  <!-- Canvas Background -->`;
     svg += `\n  <rect x="${-canvasWidth / 2}" y="${-canvasHeight / 2}" width="${canvasWidth}" height="${canvasHeight}" fill="#0b0c0f" />`;
   }
@@ -697,41 +704,47 @@ export function generateSVG(project: Project, options: SVGExportOptions): string
     }
     layerGroup += `>`;
 
-    // 1. Render nodes without a ringId (e.g. stage background, non-ring graphics)
-    resolvedNodes.forEach((node) => {
-      if (node.ringId) return;
-      if (!node.visible) return;
-      if (!isNodeInLayer(node, lyr)) return;
+    // 1. Render nodes without a ringId (e.g. stage background, non-ring graphics) if not filtering for specific ring
+    if (!options.selectedRingId) {
+      resolvedNodes.forEach((node) => {
+        if (node.ringId || node.type === "ring") return;
+        if (!node.visible) return;
+        if (!isNodeInLayer(node, lyr)) return;
 
-      const elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || [], resolvedNodes);
-      if (elSvg) {
-        layerGroup += `\n    ${elSvg.replace(/\n/g, "\n    ")}`;
-      }
-    });
+        const elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || [], resolvedNodes, options.convertTextToPaths || false);
+        if (elSvg) {
+          layerGroup += `\n    ${elSvg.replace(/\n/g, "\n    ")}`;
+        }
+      });
+    }
 
     // 2. Render nodes grouped by their parent Ring
-    const originalRings = (project.mechanism.children || []).filter((c) => c.type === "ring") as any[];
+    let originalRings = (project.mechanism.children || []).filter((c) => c.type === "ring") as any[];
+    if (options.selectedRingId) {
+      originalRings = originalRings.filter((r) => r.id === options.selectedRingId);
+    }
+
     originalRings.forEach((origRing) => {
       const resRing = resolvedNodes.find((n) => n.id === origRing.id);
       if (!resRing || !resRing.visible) return;
 
-      const ringNodes = resolvedNodes.filter((n) => n.ringId === origRing.id);
+      const ringNodes = resolvedNodes.filter((n) => n.id === origRing.id || n.ringId === origRing.id);
 
       let ringChildrenSvg = "";
       ringNodes.forEach((node) => {
         if (!isNodeInLayer(node, lyr)) return;
 
-        let elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || [], resolvedNodes);
+        let elSvg = renderNodeToSVG(node, lyr, options.embedAssets, project.assets || [], resolvedNodes, options.convertTextToPaths || false);
         if (!elSvg) return;
 
         // Apply masking (window cutouts on cover rings above)
-        if (lyr === "artwork" && node.maskIds && node.maskIds.length > 0) {
+        if (lyr === "artwork" && node.maskIds && node.maskIds.length > 0 && !options.selectedRingId && options.exportMode !== "sheet-grid") {
           const maskKey = `mask-${node.maskIds.join("-")}`;
           elSvg = `<g mask="url(#${maskKey})">\n      ${elSvg.replace(/\n/g, "\n      ")}\n    </g>`;
         }
 
         // Apply self-masking to cover rings
-        if (lyr === "artwork" && node.type === "ring") {
+        if (lyr === "artwork" && node.type === "ring" && !options.selectedRingId && options.exportMode !== "sheet-grid") {
           const selfMaskId = `self-mask-${node.id}`;
           if (masksContent.includes(`id="${selfMaskId}"`)) {
             elSvg = `<g mask="url(#${selfMaskId})">\n      ${elSvg.replace(/\n/g, "\n      ")}\n    </g>`;
@@ -770,49 +783,56 @@ export function generateSVG(project: Project, options: SVGExportOptions): string
     svg += `\n  ${ticksSvg.replace(/\n/g, "\n  ")}\n`;
   }
 
-  // Auto-Generated Grab Tabs for interactive volvelles
-  if ((options.layer === "artwork" || options.layer === "all") && project.settings.showGrabTabs !== false) {
-    const originalRings = (project.mechanism.children || []).filter((c) => c.type === "ring") as any[];
-    if (originalRings.length > 0) {
-      const maxOuterRadius = originalRings.reduce((max, r) => Math.max(max, r.outerRadius || 100), 100);
-      svg += `\n  <!-- Auto-Generated Concentric Grab Tabs -->`;
-      svg += `\n  <g id="auto-grab-tabs">`;
-      originalRings.forEach((ring, idx) => {
-        const ringColor = RING_COLORS[idx % RING_COLORS.length];
-        const R_track = maxOuterRadius + 90 + idx * 22;
-        
-        const tWidth = ring.tabWidth ?? 30;
-        const tHeight = ring.tabHeight ?? 20;
-        const tShape = ring.tabShape ?? "semicircular";
-        const tLabel = ring.tabLabel || `#${originalRings.length - idx}`;
-        
-        // Dashed slot track arc path (-135 to -45 degrees)
-        const startX = -0.7071 * R_track;
-        const startY = -0.7071 * R_track;
-        const endX = 0.7071 * R_track;
-        const endY = -0.7071 * R_track;
-        svg += `\n    <path d="M ${startX} ${startY} A ${R_track} ${R_track} 0 0 1 ${endX} ${endY}" fill="none" stroke="rgba(255,255,255,0.25)" stroke-width="1.5" stroke-dasharray="3,3" />`;
+  svg += `</svg>`;
+  return svg;
+}
 
-        // Calculate handle position
-        const ccwRot = 360 - (ring.rotation || 0);
-        const tabAngle = -135 + ccwRot / 4.0;
-        const rad = (tabAngle * Math.PI) / 180;
-        const hx = R_track * Math.cos(rad);
-        const hy = R_track * Math.sin(rad);
-
-        svg += `\n    <g id="tab-handle-${ring.id}" class="tab-control-element" data-target-ring="${ring.id}" data-radius="${R_track}" transform="translate(${hx}, ${hy}) rotate(${tabAngle})">`;
-        if (tShape === "trapezoidal") {
-          svg += `\n      <path d="M ${-tWidth/2} ${-tHeight/2} L ${tWidth/2} ${-tHeight*0.3} L ${tWidth/2} ${tHeight*0.3} L ${-tWidth/2} ${tHeight/2} Z" fill="${ringColor}" stroke="rgba(0,0,0,0.3)" stroke-width="1" style="cursor: pointer;" />`;
-        } else {
-          const rx = tShape === "semicircular" ? tHeight / 2 : 0;
-          svg += `\n      <rect x="${-tWidth/2}" y="${-tHeight/2}" width="${tWidth}" height="${tHeight}" rx="${rx}" ry="${rx}" fill="${ringColor}" stroke="rgba(0,0,0,0.3)" stroke-width="1" style="cursor: pointer;" />`;
-        }
-        svg += `\n      <text x="0" y="0" dominant-baseline="central" text-anchor="middle" font-family="sans-serif" font-size="${Math.min(10, tHeight * 0.5)}" font-weight="bold" fill="#ffffff" style="cursor: pointer;">${tLabel}</text>`;
-        svg += `\n    </g>`;
-      });
-      svg += `\n  </g>\n`;
-    }
+// Generates an unnested multi-ring cutting/printing sheet layout
+export function generateSheetLayoutSVG(project: Project, options: SVGExportOptions): string {
+  const originalRings = (project.mechanism.children || []).filter((c) => c.type === "ring") as any[];
+  if (originalRings.length === 0) {
+    return generateSVG(project, options);
   }
+
+  const margin = 30;
+  const ringSizes = originalRings.map((r) => {
+    const radius = r.outerRadius || 100;
+    return { id: r.id, name: r.name || r.id, diameter: radius * 2, radius };
+  });
+
+  const maxDiameter = Math.max(...ringSizes.map((s) => s.diameter), 100);
+  const cols = Math.ceil(Math.sqrt(ringSizes.length));
+  const rows = Math.ceil(ringSizes.length / cols);
+
+  const cellWidth = maxDiameter + margin * 2;
+  const cellHeight = maxDiameter + margin * 2;
+  const totalWidth = cols * cellWidth;
+  const totalHeight = rows * cellHeight;
+
+  let svg = `<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalWidth} ${totalHeight}" width="${totalWidth}" height="${totalHeight}">
+`;
+
+  originalRings.forEach((ring, idx) => {
+    const col = idx % cols;
+    const row = Math.floor(idx / cols);
+    const cx = col * cellWidth + cellWidth / 2;
+    const cy = row * cellHeight + cellHeight / 2;
+
+    const ringSvg = generateSVG(project, {
+      ...options,
+      selectedRingId: ring.id,
+    });
+
+    const innerContentMatch = ringSvg.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+    const innerContent = innerContentMatch ? innerContentMatch[1] : "";
+
+    svg += `\n  <!-- Sheet Item: ${ring.name || ring.id} -->`;
+    svg += `\n  <g id="sheet-ring-${ring.id}" transform="translate(${cx}, ${cy})">`;
+    svg += `\n    ${innerContent.trim()}`;
+    svg += `\n    <text x="0" y="${ring.outerRadius + 20}" font-family="sans-serif" font-size="12" fill="#94a3b8" text-anchor="middle">${ring.name || `Ring ${idx + 1}`}</text>`;
+    svg += `\n  </g>\n`;
+  });
 
   svg += `</svg>`;
   return svg;
@@ -829,6 +849,19 @@ export function generateLayerFiles(project: Project, options: SVGExportOptions):
       layer: lyr,
     });
   });
+
+  // Individual Per-Ring SVG files
+  const originalRings = (project.mechanism.children || []).filter((c) => c.type === "ring") as any[];
+  originalRings.forEach((ring, idx) => {
+    const ringName = (ring.name || `ring-${idx + 1}`).toLowerCase().replace(/\s+/g, "-");
+    fileMap[`rings/${ringName}.svg`] = generateSVG(project, {
+      ...options,
+      selectedRingId: ring.id,
+    });
+  });
+
+  // Unnested Multi-Ring Sheet Layout SVG
+  fileMap["sheet-layout.svg"] = generateSheetLayoutSVG(project, options);
 
   return fileMap;
 }

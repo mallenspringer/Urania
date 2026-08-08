@@ -30,3 +30,27 @@ validationRegistry.register(coreValidator);
 validationRegistry.register(geometryValidator);
 validationRegistry.register(fabricationValidator);
 
+export function validateProject(project: any) {
+  const validators = validationRegistry.getAllValidators();
+  const issues: ValidationIssue[] = [];
+
+  for (const validator of validators) {
+    try {
+      const res = validator.validate(project);
+      issues.push(...res);
+    } catch (err) {
+      console.error(`Validator '${validator.name}' failed:`, err);
+    }
+  }
+
+  const errors = issues.filter((i) => i.severity === "error");
+  const warnings = issues.filter((i) => i.severity === "warning");
+
+  return {
+    isValid: errors.length === 0,
+    issues,
+    errors,
+    warnings,
+  };
+}
+
